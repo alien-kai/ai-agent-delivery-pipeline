@@ -1,0 +1,54 @@
+name: AI Fix CI Codex
+
+on:
+  pull_request:
+    types: [labeled, synchronize]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  fix-ci:
+    if: github.event.action == 'labeled' && github.event.label.name == 'ai:ci-failed'
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          fetch-depth: 0
+
+      - name: Run Codex CI fixer
+        shell: bash
+        run: |
+          PROMPT=$(cat .ai/prompts/codex-ci-fixer.md)
+
+          codex exec \
+            --sandbox workspace-write \
+            -o codex-ci-fix-summary.md \
+            "$PROMPT
+
+            PR number:
+            ${{ github.event.pull_request.number }}
+
+            Fix the current CI failure for this PR.
+            Inspect the repository, recent logs if available, and apply the smallest safe fix."
+
+      - name: Commit fix
+        shell: bash
+        run: |
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "No changes produced."
+            exit 0
+          fi
+
+          git config user.name "ai-codex-runner"
+          git config user.email "ai-codex-runner@users.noreply.github.com"
+
+          git add -A
+          git commit -m "Fix CI with Codex"
+          git push

@@ -1,0 +1,128 @@
+{
+  "type": "object",
+  "required": [
+    "task_id",
+    "source_issue",
+    "objective",
+    "risk_level",
+    "merge_policy",
+    "implementation_units",
+    "acceptance_criteria",
+    "verification_commands",
+    "review_requirements"
+  ],
+  "properties": {
+    "task_id": {
+      "type": "string"
+    },
+    "source_issue": {
+      "type": "integer"
+    },
+    "objective": {
+      "type": "string"
+    },
+    "context": {
+      "type": "string"
+    },
+    "assumptions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "scope_in": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "scope_out": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "risk_level": {
+      "type": "string",
+      "enum": [
+        "green",
+        "yellow",
+        "red"
+      ]
+    },
+    "merge_policy": {
+      "type": "string",
+      "enum": [
+        "auto_merge_if_green",
+        "require_human",
+        "draft_only"
+      ]
+    },
+    "affected_areas": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "implementation_units": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "goal",
+          "verification"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "goal": {
+            "type": "string"
+          },
+          "suggested_files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "constraints": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "verification": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "acceptance_criteria": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "verification_commands": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "review_requirements": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "rollback_notes": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

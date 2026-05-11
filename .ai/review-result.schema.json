@@ -1,0 +1,74 @@
+{
+  "type": "object",
+  "required": [
+    "task_id",
+    "risk_level",
+    "auto_merge_allowed",
+    "highest_severity",
+    "findings",
+    "summary"
+  ],
+  "properties": {
+    "task_id": {
+      "type": "string"
+    },
+    "risk_level": {
+      "type": "string",
+      "enum": [
+        "green",
+        "yellow",
+        "red",
+        "unknown"
+      ]
+    },
+    "auto_merge_allowed": {
+      "type": "boolean"
+    },
+    "highest_severity": {
+      "type": "string",
+      "enum": [
+        "none",
+        "P2",
+        "P1",
+        "P0"
+      ]
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "severity",
+          "title",
+          "evidence",
+          "suggested_fix"
+        ],
+        "properties": {
+          "severity": {
+            "type": "string",
+            "enum": [
+              "P0",
+              "P1",
+              "P2",
+              "Info"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "evidence": {
+            "type": "string"
+          },
+          "suggested_fix": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "summary": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

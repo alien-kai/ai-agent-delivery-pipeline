@@ -1,0 +1,28 @@
+name: AI Auto Merge Green
+
+on:
+  pull_request:
+    types: [labeled, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  automerge:
+    runs-on: ubuntu-latest
+
+    if: >
+      startsWith(github.event.pull_request.title, '[AI IMPL]') &&
+      contains(join(github.event.pull_request.labels.*.name, ','), 'risk:green') &&
+      contains(join(github.event.pull_request.labels.*.name, ','), 'ai:auto-merge-eligible')
+
+    steps:
+      - name: Merge green PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh pr merge ${{ github.event.pull_request.number }} \
+            --squash \
+            --auto

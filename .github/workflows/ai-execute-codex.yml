@@ -1,0 +1,134 @@
+name: AI Execute Codex
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.ai/tasks/*.yaml'
+  workflow_dispatch:
+    inputs:
+      task_file:
+        description: 'Task spec file, e.g. .ai/tasks/123.yaml'
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  execute:
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Preflight
+        shell: bash
+        run: |
+          if ! command -v codex >/dev/null 2>&1; then
+            echo "codex CLI is not installed on this self-hosted runner."
+            exit 1
+          fi
+
+          if [ -n "$OPENAI_API_KEY" ]; then
+            echo "WARNING: OPENAI_API_KEY is set. Codex may use API billing instead of ChatGPT subscription auth."
+          fi
+
+          codex --version || true
+
+      - name: Detect task file
+        id: task
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TASK_FILE="${{ github.event.inputs.task_file }}"
+          else
+            TASK_FILE=$(git diff --name-only HEAD~1 HEAD | grep '^.ai/tasks/.*\.yaml$' | tail -n 1 || true)
+          fi
+
+          if [ -z "$TASK_FILE" ]; then
+            echo "No task file found."
+            exit 1
+          fi
+
+          TASK_ID=$(basename "$TASK_FILE" .yaml)
+
+          echo "task_file=$TASK_FILE" >> "$GITHUB_OUTPUT"
+          echo "task_id=$TASK_ID" >> "$GITHUB_OUTPUT"
+
+
+
+      - name: Extract risk label
+        id: risk
+        shell: bash
+        run: |
+          RISK=$(python3 scripts/extract-task-risk.py "${{ steps.task.outputs.task_file }}")
+          echo "risk=$RISK" >> "$GITHUB_OUTPUT"
+
+      - name: Create implementation branch
+        shell: bash
+        run: |
+          BRANCH="codex/implement-${{ steps.task.outputs.task_id }}-${GITHUB_RUN_ID}"
+          git checkout -b "$BRANCH"
+          echo "BRANCH=$BRANCH" >> "$GITHUB_ENV"
+
+      - name: Run Codex executor
+        shell: bash
+        run: |
+          PROMPT=$(cat .ai/prompts/codex-executor.md)
+
+          codex exec \
+            --sandbox workspace-write \
+            -o codex-summary.md \
+            "$PROMPT
+
+            Task spec file:
+            ${{ steps.task.outputs.task_file }}
+
+            Implement this task spec now."
+
+      - name: Commit changes
+        id: commit
+        shell: bash
+        run: |
+          git status --short
+
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "No changes produced by Codex."
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git config user.name "ai-codex-runner"
+          git config user.email "ai-codex-runner@users.noreply.github.com"
+
+          git add -A
+          git commit -m "Implement ${{ steps.task.outputs.task_id }} with Codex"
+          git push origin "$BRANCH"
+          echo "has_changes=true" >> "$GITHUB_OUTPUT"
+
+      - name: Create PR
+        if: steps.commit.outputs.has_changes == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          BODY=$(cat codex-summary.md || true)
+
+          gh pr create \
+            --title "[AI IMPL] ${{ steps.task.outputs.task_id }}" \
+            --body "$BODY
+
+            Source task spec: ${{ steps.task.outputs.task_file }}
+            Risk level: ${{ steps.risk.outputs.risk }}
+            " \
+            --base main \
+            --head "$BRANCH"
+
+          PR_NUMBER=$(gh pr view "$BRANCH" --json number -q .number)
+          gh pr edit "$PR_NUMBER" --add-label "ai:review" || true
+          gh pr edit "$PR_NUMBER" --add-label "risk:${{ steps.risk.outputs.risk }}" || true

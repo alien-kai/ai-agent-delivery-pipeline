@@ -1,0 +1,57 @@
+name: AI Plan Auto Merge
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge-plan-pr:
+    if: startsWith(github.event.pull_request.title, '[AI PLAN]')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check changed files
+        id: files
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const pr = context.payload.pull_request;
+            const files = await github.paginate(
+              github.rest.pulls.listFiles,
+              { owner, repo, pull_number: pr.number }
+            );
+
+            const allowed = files.length > 0 && files.every(f =>
+              f.filename.startsWith('.ai/tasks/') &&
+              f.filename.endsWith('.yaml') &&
+              ['added', 'modified'].includes(f.status)
+            );
+
+            core.setOutput('allowed', allowed ? 'true' : 'false');
+
+      - name: Merge plan PR
+        if: steps.files.outputs.allowed == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const pr = context.payload.pull_request;
+
+            await github.rest.pulls.merge({
+              owner,
+              repo,
+              pull_number: pr.number,
+              merge_method: 'squash'
+            });
+
+      - name: Refuse unsafe plan PR
+        if: steps.files.outputs.allowed != 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.setFailed('AI PLAN PR changed files outside .ai/tasks/*.yaml');

@@ -1,0 +1,57 @@
+name: AI Plan
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: read
+  issues: read
+
+jobs:
+  trigger-claude-planner:
+    if: github.event.label.name == 'ai:plan'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Trigger Claude Planner Routine
+        env:
+          ROUTINE_FIRE_URL: ${{ secrets.ROUTINE_FIRE_URL }}
+          ROUTINE_FIRE_TOKEN: ${{ secrets.ROUTINE_FIRE_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+          REPO: ${{ github.repository }}
+          SENDER: ${{ github.actor }}
+        run: |
+          if [ -z "$ROUTINE_FIRE_URL" ] || [ -z "$ROUTINE_FIRE_TOKEN" ]; then
+            echo "ROUTINE_FIRE_URL or ROUTINE_FIRE_TOKEN is missing."
+            exit 1
+          fi
+
+          jq -n \
+            --arg issue_number "$ISSUE_NUMBER" \
+            --arg issue_title "$ISSUE_TITLE" \
+            --arg issue_body "$ISSUE_BODY" \
+            --arg issue_url "$ISSUE_URL" \
+            --arg repo "$REPO" \
+            --arg sender "$SENDER" \
+            '{
+              text: (
+                "GitHub issue planning request\n\n" +
+                "repo: " + $repo + "\n" +
+                "issue_number: " + $issue_number + "\n" +
+                "issue_title: " + $issue_title + "\n" +
+                "issue_url: " + $issue_url + "\n" +
+                "sender: " + $sender + "\n\n" +
+                "issue_body:\n" + $issue_body
+              )
+            }' > payload.json
+
+          curl -X POST "$ROUTINE_FIRE_URL" \
+            -H "Authorization: Bearer $ROUTINE_FIRE_TOKEN" \
+            -H "anthropic-version: 2023-06-01" \
+            -H "anthropic-beta: experimental-cc-routine-2026-04-01" \
+            -H "Content-Type: application/json" \
+            --data @payload.json

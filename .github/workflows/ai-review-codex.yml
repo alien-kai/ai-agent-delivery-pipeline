@@ -1,0 +1,93 @@
+name: AI Review Codex
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  review:
+    if: startsWith(github.event.pull_request.title, '[AI IMPL]')
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v4
+        with:
+          ref: refs/pull/${{ github.event.pull_request.number }}/merge
+          fetch-depth: 0
+
+      - name: Preflight
+        shell: bash
+        run: |
+          if ! command -v codex >/dev/null 2>&1; then
+            echo "codex CLI is not installed on this self-hosted runner."
+            exit 1
+          fi
+
+          codex --version || true
+
+      - name: Fetch base and head
+        shell: bash
+        run: |
+          git fetch origin ${{ github.event.pull_request.base.ref }}
+          git fetch origin pull/${{ github.event.pull_request.number }}/head:pr-head
+
+      - name: Prepare review context
+        shell: bash
+        run: |
+          git diff --stat origin/${{ github.event.pull_request.base.ref }}...pr-head > pr-diff-stat.txt
+          git diff origin/${{ github.event.pull_request.base.ref }}...pr-head > pr-diff.patch
+
+      - name: Run Codex review
+        shell: bash
+        run: |
+          PROMPT=$(cat .ai/prompts/codex-reviewer.md)
+
+          codex exec \
+            --sandbox read-only \
+            -o codex-review.md \
+            "$PROMPT
+
+            Review this PR.
+
+            PR number:
+            ${{ github.event.pull_request.number }}
+
+            PR title:
+            ${{ github.event.pull_request.title }}
+
+            Diff stat:
+            $(cat pr-diff-stat.txt)
+
+            Full diff is available in pr-diff.patch.
+            Read repository files and task specs as needed.
+            Return the structured review only."
+
+      - name: Comment review
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh pr comment ${{ github.event.pull_request.number }} \
+            --body "$(cat codex-review.md)"
+
+      - name: Mark auto-merge eligibility if safe
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          python3 scripts/parse-review-result.py codex-review.md > review-gate.env
+          cat review-gate.env
+          source review-gate.env
+
+          if [ "$AUTO_MERGE_ALLOWED" = "true" ] && [ "$HIGHEST_SEVERITY" = "none" ] && [ "$RISK_LEVEL" = "green" ]; then
+            gh pr edit ${{ github.event.pull_request.number }} --add-label "ai:auto-merge-eligible" || true
+          else
+            gh pr edit ${{ github.event.pull_request.number }} --add-label "ai:human-required" || true
+          fi
