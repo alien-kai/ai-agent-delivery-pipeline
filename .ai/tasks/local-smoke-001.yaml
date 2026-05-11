@@ -1,0 +1,140 @@
+task_id: local-smoke-001
+source_issue: 0
+
+objective: |
+  Add docs/workflow-smoke-test.md, a human-runnable smoke-test runbook for
+  this repository's AI delivery pipeline (Claude planner -> Codex
+  implementer -> Codex review -> Codex rescue). The runbook lets a
+  maintainer verify end-to-end that each stage works, starting from a
+  natural-language idea and ending with a merged or rejected PR. The
+  successful creation of this very YAML by /ai-plan is itself the smoke
+  test for the planner stage.
+
+context: |
+  This repository is a fresh scaffold for an AI delivery pipeline.
+  CLAUDE.md and AGENTS.md define the planner/implementer contract,
+  .ai/risk-policy.md defines risk tiers, and .ai/task-spec.schema.json
+  defines the YAML shape. The docs/ directory already contains
+  operating-adjacent runbooks (operations.md, security.md,
+  setup-claude-routine.md, setup-codex-self-hosted-runner.md) but no
+  end-to-end manual smoke test for the workflow itself. We need that
+  runbook before routing real product issues through the pipeline, so
+  that a human operator can confirm each stage in isolation.
+
+assumptions:
+  - No GitHub issue is filed for this task; source_issue is set to 0 to
+    indicate a planner-generated local draft.
+  - The reader already has the Claude Code CLI and the openai-codex
+    plugin installed and authenticated (verifiable via /codex:setup).
+  - docs/ is the conventional location for human-facing runbooks in this
+    repository.
+  - Markdown-only changes do not trigger typecheck, lint, or unit-test
+    gates in this repository's current CI.
+  - The slash command names /ai-plan, /ai-implement, /ai-codex-review,
+    and /ai-codex-rescue are stable for the duration of this task.
+
+scope_in:
+  - Create docs/workflow-smoke-test.md.
+  - Document a Prerequisites checklist (Claude CLI, Codex CLI, auth,
+    repo permissions, /codex:setup output).
+  - |
+    Document each pipeline stage with the exact slash command and the
+    expected output artifact:
+      /ai-plan          -> .ai/tasks/{id}.yaml
+      /ai-implement     -> implementation branch + diff
+      /ai-codex-review  -> review report
+      /ai-codex-rescue  -> follow-up fix or diagnosis
+  - Document a Rollback / Cleanup section for smoke runs that should
+    not leave artifacts in the repository.
+  - Document a short Troubleshooting section (auth failure, missing
+    plugin, dirty working tree).
+
+scope_out:
+  - Modifying any source file, script, or configuration.
+  - Adding, upgrading, or removing dependencies.
+  - Changing CI, GitHub Actions, branch protection, or labels.
+  - Editing AGENTS.md, CLAUDE.md, .ai/risk-policy.md, or the JSON schema.
+  - Anything touching auth, payment, privacy, secrets, or database
+    schema.
+  - Filing the GitHub issue or opening the PR — that is the operator's
+    responsibility once this YAML is approved.
+
+risk_level: green
+merge_policy: auto_merge_if_green
+
+affected_areas:
+  - docs/
+
+implementation_units:
+  - id: unit-1-scaffold-runbook
+    goal: |
+      Create docs/workflow-smoke-test.md with a one-paragraph intro and
+      the full section skeleton. Required H2 sections, in this order:
+      Prerequisites, Plan, Implement, Review, Rescue, Rollback,
+      Troubleshooting.
+    suggested_files:
+      - docs/workflow-smoke-test.md
+    constraints:
+      - Markdown only; no other files touched.
+      - No new dependencies.
+      - Section headings must use H2 (`## `) and match the names above
+        exactly so downstream verification can grep for them.
+    verification:
+      - test -f docs/workflow-smoke-test.md
+      - "grep -cE '^## (Prerequisites|Plan|Implement|Review|Rescue|Rollback|Troubleshooting)$' docs/workflow-smoke-test.md | grep -qx 7"
+
+  - id: unit-2-fill-stage-instructions
+    goal: |
+      Populate each pipeline-stage section with the exact slash command,
+      the expected artifact, and a short "how to tell it worked"
+      checklist. Reference AGENTS.md and .ai/risk-policy.md by link
+      rather than duplicating their content.
+    suggested_files:
+      - docs/workflow-smoke-test.md
+    constraints:
+      - Do not copy risk-policy or agent-contract content into the doc;
+        link to the source files instead so the contract stays
+        single-sourced.
+      - No real credentials, tokens, internal URLs, or PII.
+      - Each stage section must include at least one concrete
+        command-line example fenced in a ```bash block.
+    verification:
+      - grep -q '/ai-plan' docs/workflow-smoke-test.md
+      - grep -q '/ai-implement' docs/workflow-smoke-test.md
+      - grep -q '/ai-codex-review' docs/workflow-smoke-test.md
+      - grep -q '/ai-codex-rescue' docs/workflow-smoke-test.md
+      - "grep -q '```bash' docs/workflow-smoke-test.md"
+
+acceptance_criteria:
+  - docs/workflow-smoke-test.md exists, is non-empty, and is committed.
+  - The doc covers all four pipeline stages (plan, implement, review,
+    rescue), plus Prerequisites, Rollback, and Troubleshooting.
+  - Only docs/workflow-smoke-test.md and
+    .ai/tasks/local-smoke-001.yaml are modified by the implementation
+    PR.
+  - No secrets, tokens, internal URLs, or PII appear in the new doc.
+  - Markdown renders without broken headings on visual inspection.
+
+verification_commands:
+  - test -f docs/workflow-smoke-test.md
+  - test -f .ai/tasks/local-smoke-001.yaml
+  - "git diff --name-only main...HEAD | sort -u"
+  - "git diff --name-only main...HEAD | grep -vE '^(docs/workflow-smoke-test\\.md|\\.ai/tasks/local-smoke-001\\.yaml)$' | (! grep .)"
+
+review_requirements:
+  - Confirm risk_level=green is correct and no source / dependency / CI
+    / database / auth changes leaked in.
+  - Confirm the doc references (does not duplicate) AGENTS.md and
+    .ai/risk-policy.md so the contract stays single-sourced.
+  - Confirm all four slash command names match the skills currently
+    exposed by the openai-codex plugin and the ai-* skills.
+  - Confirm no secrets, tokens, internal URLs, or PII appear in the
+    doc.
+  - Codex adversarial review reports zero P0/P1 findings.
+
+rollback_notes: |
+  Pure documentation change with no runtime, data, or schema impact.
+  To roll back: `git revert <merge-commit-sha>`, or in a follow-up
+  commit delete docs/workflow-smoke-test.md and
+  .ai/tasks/local-smoke-001.yaml. No coordination with other systems
+  is required and no data needs to be restored.
