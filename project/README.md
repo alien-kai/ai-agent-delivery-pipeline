@@ -8,6 +8,7 @@
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Routine-7C3AED)](https://www.anthropic.com/claude-code)
 [![OpenAI Codex](https://img.shields.io/badge/OpenAI-Codex-000000?logo=openai)](https://openai.com/index/openai-codex)
 [![GitHub Actions](https://img.shields.io/badge/GitHub-Actions-2088FF?logo=githubactions&logoColor=white)](https://github.com/features/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](../LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](https://github.com/alien-kai/ai-agent-delivery-pipeline/pulls)
 [![Stars](https://img.shields.io/github/stars/alien-kai/ai-agent-delivery-pipeline?style=social)](https://github.com/alien-kai/ai-agent-delivery-pipeline)
 
@@ -239,4 +240,6 @@ ai:plan
 
 ## 📄 License
 
-仓库尚未声明 license。在添加之前，默认 GitHub 条款生效 —— 代码是 **source-available（可见但未授权）**，**不是真正意义上的开源**。如果希望他人能放心地使用、fork 或贡献，建议添加一个 SPDX 标准 license（MIT、Apache-2.0 等）。
+本项目采用 [MIT License](../LICENSE) 发布，© 2026 alien-kai。
+
+你可以自由使用、复制、修改、合并、发布、分发、再授权或出售本模板，只要在分发副本中保留版权声明和 license 文本即可。

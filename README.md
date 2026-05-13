@@ -8,6 +8,7 @@
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Routine-7C3AED)](https://www.anthropic.com/claude-code)
 [![OpenAI Codex](https://img.shields.io/badge/OpenAI-Codex-000000?logo=openai)](https://openai.com/index/openai-codex)
 [![GitHub Actions](https://img.shields.io/badge/GitHub-Actions-2088FF?logo=githubactions&logoColor=white)](https://github.com/features/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](https://github.com/alien-kai/ai-agent-delivery-pipeline/pulls)
 [![Stars](https://img.shields.io/github/stars/alien-kai/ai-agent-delivery-pipeline?style=social)](https://github.com/alien-kai/ai-agent-delivery-pipeline)
 
@@ -239,4 +240,6 @@ Please open a discussion before large changes; this template is intentionally mi
 
 ## 📄 License
 
-No license has been declared yet. Until one is added, default GitHub terms apply — code is **source-available, not open-source**. If you want others to use, fork, or contribute under clear terms, consider adding an SPDX-recognized license (MIT, Apache-2.0, etc.).
+Released under the [MIT License](./LICENSE) © 2026 alien-kai.
+
+You are free to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of this template, provided the copyright notice and license text are retained in distributed copies.
