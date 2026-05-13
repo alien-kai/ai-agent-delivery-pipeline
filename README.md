@@ -1,106 +1,172 @@
-# AI Agent Delivery Pipeline
+<div align="center">
 
-这是一个用于把 **idea → 自动规划 → 自动实现 → 自动 review → CI 验证 → 低风险自动合并** 串起来的 GitHub 自动化仓库模板。
+# 🤖 AI Agent Delivery Pipeline
 
-核心分工：
+**Idea → Plan → Implement → Review → CI → Merge — fully wired through GitHub.**
 
-- **GPT Pro**：设计时大脑。负责优化 prompt、schema、risk policy、workflow，不作为 runtime API。
-- **GitHub**：任务队列、状态机、PR gate、审计日志。
-- **Claude Code Routine**：自动 planner / decomposer。把 GitHub issue 转成 `.ai/tasks/{issue}.yaml`。
-- **Codex**：自动 executor / reviewer / CI fixer。根据 task spec 写代码、创建 PR、review、修 CI。
-- **CI**：最终裁判。
+[![Status](https://img.shields.io/badge/status-experimental-orange)](https://github.com/alien-kai/ai-agent-delivery-pipeline)
+[![Claude Code](https://img.shields.io/badge/Claude%20Code-Routine-7C3AED)](https://www.anthropic.com/claude-code)
+[![OpenAI Codex](https://img.shields.io/badge/OpenAI-Codex-000000?logo=openai)](https://openai.com/index/openai-codex)
+[![GitHub Actions](https://img.shields.io/badge/GitHub-Actions-2088FF?logo=githubactions&logoColor=white)](https://github.com/features/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](https://github.com/alien-kai/ai-agent-delivery-pipeline/pulls)
+[![Stars](https://img.shields.io/github/stars/alien-kai/ai-agent-delivery-pipeline?style=social)](https://github.com/alien-kai/ai-agent-delivery-pipeline)
+
+🌐 **Language**: **English** · [简体中文](./project/README.md)
+
+</div>
 
 ---
 
-## 工作流
+## ✨ Motivation
+
+LLM-based coding agents are powerful but **brittle when run end-to-end without guardrails**. Left alone, they refactor across the repo, skip tests, drift outside the requested scope, and merge code nobody fully understands. Most teams compensate with manual oversight — which erases the speed gain that pulled them to agents in the first place.
+
+This repository is a **template for a guarded delivery pipeline** that treats AI agents as colleagues, not autopilots. It gives each agent one narrow role, uses GitHub as the source of truth and the state machine, and lets a risk policy decide what may merge itself versus what still needs a human signature.
+
+---
+
+## 🎯 Problems Solved
+
+| # | Problem | How this pipeline addresses it |
+|---|---------|-------------------------------|
+| 1 | Agents make unbounded changes when asked vague things | Planner emits a strict **task spec YAML** naming `scope_in` / `scope_out` before any code is written |
+| 2 | A single model planning *and* implementing tends to rubber-stamp itself | **Two-agent separation**: Claude plans, Codex implements and reviews — neither owns both sides |
+| 3 | Auto-merge of risky changes (auth, payments, migrations) | **Risk policy** tiers every task as `green` / `yellow` / `red`; only green auto-merges |
+| 4 | Reviews drift into style nits while real bugs slip through | **Adversarial Codex review** with an explicit P0/P1 checklist (auth regression, missing tests, scope creep) |
+| 5 | CI failures cause reactive edits across the diff | **CI fixer** is told to make the smallest patch, not refactor around the failure |
+| 6 | No audit trail of "who decided what" | Every step is a GitHub artifact: issue → plan PR → impl PR → review comment → labels |
+
+---
+
+## 🧭 Where It Fits
+
+| Scenario | Why this template helps |
+|----------|------------------------|
+| 🧪 **Solo founders / small teams** shipping side projects faster | Lets one human supervise many small green tasks in parallel without constant context-switching |
+| 🏢 **Mid-size product teams** drowning in lint / docs / test debt | Green-tier auto-merge clears the backlog of small fixes nobody wants to PR-review |
+| 🔬 **AI-coding researchers** comparing planners, reviewers, executors | Each role is a swappable prompt under `.ai/prompts/`, making controlled experiments easy |
+| 🎓 **Engineers learning agent orchestration** | Workflow files + prompts are short, readable, and colocated — no SaaS lock-in |
+| 🛠️ **Internal platform teams** wiring agents to existing CI/CD | GitHub Actions only; no extra control plane, runtime, or vendor SDK |
+
+> ⚠️ **Not yet for**: production-critical paths, regulated environments, or any place where merge-without-human is a compliance violation. Stay on `yellow` / `red` there.
+
+---
+
+## 🏗️ Architecture at a Glance
+
+```mermaid
+flowchart LR
+    A[GitHub Issue<br/>label: ai:plan] --> B[Claude Routine<br/>Planner]
+    B --> C[.ai/tasks/N.yaml<br/>Task Spec]
+    C --> D[Codex Executor<br/>self-hosted]
+    D --> E[Codex Reviewer<br/>adversarial]
+    E -->|risk:green| F[Auto-merge]
+    E -->|risk:yellow| G[Human approval]
+    E -->|risk:red| H[Draft only]
+```
+
+---
+
+## 👥 Agent Roles
+
+| Agent | Role | What it does | What it never does |
+|-------|------|--------------|-------------------|
+| 🧠 **GPT Pro** | Design-time brain | Tune prompts, schemas, risk policy, workflows | Run at runtime; cost runtime API calls |
+| 🐙 **GitHub** | Queue + state machine | Issues, labels, PR gates, audit log | Decide; it only tracks |
+| 📋 **Claude Code Routine** | Auto planner / decomposer | Turn issues into `.ai/tasks/{issue}.yaml` | Modify production source files |
+| ⚡ **Codex** | Auto executor / reviewer / CI fixer | Implement the spec, open PRs, review, fix CI | Push to main, exceed scope, ignore tests |
+| ✅ **CI** | Final judge | Run typecheck / lint / tests | Be bypassed |
+
+---
+
+## 🔄 Workflow
 
 ```text
 GitHub Issue + label ai:plan
         ↓
-GitHub Action: ai-plan.yml
+  ai-plan.yml  (GitHub Action)
         ↓
-Claude Code Routine API trigger
+  Claude Code Routine API trigger
         ↓
-Claude creates [AI PLAN] PR with .ai/tasks/{issue}.yaml
+  [AI PLAN] PR  ──▶  contains only .ai/tasks/{issue}.yaml
         ↓
-Plan PR auto-merge if it only changes .ai/tasks/*.yaml
+  ai-plan-automerge.yml  ──▶  auto-merge if spec-only
         ↓
-GitHub Action: ai-execute-codex.yml
+  ai-execute-codex.yml
         ↓
-Codex implements on feature branch
+  Codex implements on a feature branch
         ↓
-Codex opens [AI IMPL] PR
+  [AI IMPL] PR
         ↓
-CI + ai-review-codex.yml
+  CI  +  ai-review-codex.yml  (Codex adversarial review)
         ↓
-Codex adversarial review
-        ↓
-risk:green auto-merge; risk:yellow/risk:red require human approval
+  risk:green  ──▶ auto-merge
+  risk:yellow ──▶ human approval
+  risk:red    ──▶ draft only
 ```
 
 ---
 
-## 快速开始
+## 🚦 Risk Tiers
 
-### 1. 推送到 GitHub
+| Tier | Examples | Merge policy |
+|------|----------|--------------|
+| 🟢 **green** | docs · tests · small bugfix · lint / type fix · UI copy | Auto-merge if CI green & no P0/P1 review findings |
+| 🟡 **yellow** | new feature · API behavior change · multi-file refactor · perf optimization | Auto-implement, **human approval required to merge** |
+| 🔴 **red** | auth · payments · permissions · DB migration · secrets · privacy · production deploy | **Plan or draft PR only** — no auto-implement |
 
-本模板内置 `gh` CLI bootstrap 脚本：
+Full policy: [`.ai/risk-policy.md`](./.ai/risk-policy.md).
+
+---
+
+## 🚀 Quick Start
+
+### 1. Push to GitHub
 
 ```bash
 gh auth login
 chmod +x scripts/*.sh
-./scripts/bootstrap-github.sh alien-kai ai-agent-delivery-pipeline private
+./scripts/bootstrap-github.sh <owner> <repo-name> <public|private>
 ```
 
-参数：
+Arguments:
 
 ```text
-第 1 个参数：GitHub owner，例如 alien-kai
-第 2 个参数：repo name，例如 ai-agent-delivery-pipeline
-第 3 个参数：private 或 public
+arg 1: GitHub owner, e.g. alien-kai
+arg 2: repo name,    e.g. ai-agent-delivery-pipeline
+arg 3: private | public
 ```
 
-### 2. 创建 labels
+### 2. Create labels
 
 ```bash
 ./scripts/create-labels.sh
 ```
 
-### 3. 创建 Claude Code Routine
+### 3. Create the Claude Code Routine
 
-阅读：
-
-```text
-docs/setup-claude-routine.md
-```
-
-创建 Routine 后，把 API trigger 的 URL 和 token 加到 GitHub Secrets：
+Follow [`docs/setup-claude-routine.md`](./docs/setup-claude-routine.md), then add the API trigger to GitHub Secrets:
 
 ```text
 ROUTINE_FIRE_URL
 ROUTINE_FIRE_TOKEN
 ```
 
-### 4. 配置 Codex self-hosted runner
+### 4. Configure the Codex self-hosted runner
 
-阅读：
-
-```text
-docs/setup-codex-self-hosted-runner.md
-```
-
-核心命令：
+Follow [`docs/setup-codex-self-hosted-runner.md`](./docs/setup-codex-self-hosted-runner.md). Core commands:
 
 ```bash
 npm i -g @openai/codex
 codex login
 ```
 
-如果你想使用 ChatGPT subscription auth，而不是 API 计费，请不要在 runner 环境里设置 `OPENAI_API_KEY`。
+> 💡 To use a **ChatGPT subscription** instead of API billing, do **not** set `OPENAI_API_KEY` in the runner environment.
 
-### 5. 开始使用
+### 5. Open your first AI issue
 
-创建 GitHub issue，使用 `AI Task` 模板，或手动添加 label：
+Create a GitHub issue using the `AI Task` template, or add the label manually:
 
 ```text
 ai:plan
@@ -108,64 +174,9 @@ ai:plan
 
 ---
 
-## 风险分层
+## 🧪 Local Mode (Claude Code + Codex Plugin)
 
-### green：可自动合并
-
-- docs
-- tests
-- 小 bug fix
-- lint/type 修复
-- 小范围 UI copy
-
-条件：
-
-- CI 通过
-- Codex review 无 P0/P1
-- 没有 auth/payment/permission/privacy/database/secrets/deployment 风险
-
-### yellow：自动实现，人工批准
-
-- 新 feature
-- API 行为变化
-- 多文件重构
-- 用户可见行为变化
-- 性能优化
-
-### red：只允许 plan 或 draft PR
-
-- auth
-- payment
-- permission
-- database migration
-- privacy
-- secrets
-- production deployment
-- data deletion
-- compliance
-
----
-
-## 需要你替换的内容
-
-- `AGENTS.md` 里的真实项目命令
-- `CLAUDE.md` 里的项目上下文
-- `.ai/prompts/*` 中的技术栈细节
-- GitHub Secrets: `ROUTINE_FIRE_URL`, `ROUTINE_FIRE_TOKEN`
-- self-hosted runner 环境
-- branch protection / required checks
-
-
----
-
-## Claude Code + Codex Plugin 本地实验
-
-本仓库同时支持两种模式：
-
-1. **本地半自动模式**：在 Claude Code 中使用项目 slash commands 和 Codex plugin。
-2. **GitHub 自动化模式**：用 GitHub issue/labels 触发 Claude Routine 和 Codex runner。
-
-本地模式建议先跑通：
+The repo also supports a **local semi-automatic mode**, useful for first-time setup and prompt tuning.
 
 ```text
 /plugin marketplace add openai/codex-plugin-cc
@@ -174,18 +185,61 @@ ai:plan
 /codex:setup
 ```
 
-然后使用项目命令：
+Then use the project slash commands:
 
-```text
-/ai-plan <你的 idea 或 issue 编号>
-/ai-implement .ai/tasks/<id>.yaml
-/ai-codex-review
-/ai-codex-rescue <最高优先级问题>
-```
+| Command | Purpose |
+|---------|---------|
+| `/ai-plan <idea or issue#>` | Generate a task spec |
+| `/ai-implement .ai/tasks/<id>.yaml` | Implement against the spec |
+| `/ai-codex-review` | Adversarial review of the current branch |
+| `/ai-codex-rescue <highest-priority issue>` | Have Codex fix the most important finding |
 
-实验方案见：
+See [`docs/experiment-plan.md`](./docs/experiment-plan.md) and [`docs/prompt-library.md`](./docs/prompt-library.md).
 
-```text
-docs/experiment-plan.md
-docs/prompt-library.md
-```
+---
+
+## 🔧 What You Need to Customize
+
+| File | Why |
+|------|-----|
+| [`AGENTS.md`](./AGENTS.md) | Real install / typecheck / lint / test commands for your project |
+| [`CLAUDE.md`](./CLAUDE.md) | Project context Claude reads on every routine run |
+| `.ai/prompts/*` | Tech-stack specifics in each agent's prompt |
+| GitHub Secrets | `ROUTINE_FIRE_URL`, `ROUTINE_FIRE_TOKEN` |
+| Self-hosted runner | Hardware, network policy, Codex auth |
+| Branch protection | Required checks, restrict push to `main` |
+
+---
+
+## 📚 Documentation
+
+| Doc | Topic |
+|-----|-------|
+| [`docs/experiment-plan.md`](./docs/experiment-plan.md) | Phased experiment plan from manual baseline → full auto |
+| [`docs/prompt-library.md`](./docs/prompt-library.md) | Prompt templates and snippets |
+| [`docs/setup-claude-routine.md`](./docs/setup-claude-routine.md) | Provision the Claude Code Routine |
+| [`docs/setup-codex-self-hosted-runner.md`](./docs/setup-codex-self-hosted-runner.md) | Stand up a Codex runner |
+| [`docs/operations.md`](./docs/operations.md) | Day-2 operations |
+| [`docs/security.md`](./docs/security.md) | Security guidance |
+| [`docs/workflow-smoke-test.md`](./docs/workflow-smoke-test.md) | Smoke-test the pipeline |
+
+---
+
+## 🤝 Contributing
+
+Issues and PRs are welcome — especially:
+
+- prompt improvements,
+- new risk-tier examples,
+- workflows adapted to other CI systems,
+- bug reports from real-world usage.
+
+Please open a discussion before large changes; this template is intentionally minimal.
+
+---
+
+## 📄 License
+
+Released under the [MIT License](./LICENSE) © 2026 alien-kai.
+
+You are free to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of this template, provided the copyright notice and license text are retained in distributed copies.
