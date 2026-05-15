@@ -83,7 +83,7 @@ class ValidateTaskSpecTests(unittest.TestCase):
         finally:
             path.unlink()
 
-    def test_invalid_green_without_allowed_file_patterns(self):
+    def test_strict_green_without_allowed_file_patterns_invalid(self):
         base = (FIXTURES / "valid-green.yaml").read_text(encoding="utf-8")
         broken = base.replace(
             'allowed_file_patterns:\n  - "README.md"\n',
@@ -91,12 +91,28 @@ class ValidateTaskSpecTests(unittest.TestCase):
         )
         path = _tmpfile(broken)
         try:
-            result = validator.validate(path)
+            result = validator.validate(path, strict=True)
             self.assertFalse(result["ok"])
             self.assertTrue(
-                any("green tasks require allowed_file_patterns" in e for e in result["errors"]),
+                any("allowed_file_patterns" in e for e in result["errors"]),
                 msg=result["errors"],
             )
+        finally:
+            path.unlink()
+
+    def test_default_green_without_allowed_file_patterns_warns(self):
+        base = (FIXTURES / "valid-green.yaml").read_text(encoding="utf-8")
+        broken = base.replace(
+            'allowed_file_patterns:\n  - "README.md"\n',
+            "",
+        )
+        path = _tmpfile(broken)
+        try:
+            result = validator.validate(path)  # default: not strict
+            self.assertTrue(result["ok"], msg=result["errors"])
+            self.assertTrue(result["warnings"], msg="expected a warning")
+            self.assertIn("warnings", result["summary"])
+            self.assertTrue(result["summary"]["warnings"])
         finally:
             path.unlink()
 
@@ -215,6 +231,171 @@ class ValidateTaskSpecTests(unittest.TestCase):
         )
         self.assertEqual(proc.returncode, 1)
         self.assertIn("unknown", proc.stderr)
+
+    def test_invalid_allowed_file_patterns_dict_item(self):
+        base = (FIXTURES / "valid-green.yaml").read_text(encoding="utf-8")
+        broken = base.replace(
+            'allowed_file_patterns:\n  - "README.md"',
+            'allowed_file_patterns:\n  - pattern: "src/**"',
+        )
+        path = _tmpfile(broken)
+        try:
+            result = validator.validate(path)
+            self.assertFalse(result["ok"])
+            self.assertTrue(
+                any("allowed_file_patterns" in e for e in result["errors"]),
+                msg=result["errors"],
+            )
+        finally:
+            path.unlink()
+
+    def test_invalid_allowed_file_patterns_empty_string(self):
+        base = (FIXTURES / "valid-green.yaml").read_text(encoding="utf-8")
+        broken = base.replace(
+            'allowed_file_patterns:\n  - "README.md"',
+            'allowed_file_patterns:\n  - ""',
+        )
+        path = _tmpfile(broken)
+        try:
+            result = validator.validate(path)
+            self.assertFalse(result["ok"])
+            self.assertTrue(
+                any("allowed_file_patterns" in e for e in result["errors"]),
+                msg=result["errors"],
+            )
+        finally:
+            path.unlink()
+
+    def test_invalid_allowed_file_patterns_whitespace_only(self):
+        base = (FIXTURES / "valid-green.yaml").read_text(encoding="utf-8")
+        broken = base.replace(
+            'allowed_file_patterns:\n  - "README.md"',
+            'allowed_file_patterns:\n  - "   "',
+        )
+        path = _tmpfile(broken)
+        try:
+            result = validator.validate(path)
+            self.assertFalse(result["ok"])
+            self.assertTrue(
+                any("allowed_file_patterns" in e for e in result["errors"]),
+                msg=result["errors"],
+            )
+        finally:
+            path.unlink()
+
+    def test_green_meaningless_pattern_invalid(self):
+        base = (FIXTURES / "valid-green.yaml").read_text(encoding="utf-8")
+        broken = base.replace(
+            'allowed_file_patterns:\n  - "README.md"',
+            'allowed_file_patterns:\n  - "**/*"',
+        )
+        path = _tmpfile(broken)
+        try:
+            result = validator.validate(path)
+            self.assertFalse(result["ok"])
+            self.assertTrue(
+                any("too broad" in e for e in result["errors"]),
+                msg=result["errors"],
+            )
+        finally:
+            path.unlink()
+
+    def test_invalid_forbidden_file_patterns_empty_string(self):
+        base = (FIXTURES / "valid-green.yaml").read_text(encoding="utf-8")
+        broken = base.replace(
+            'forbidden_file_patterns:\n  - "src/**"\n  - ".env*"',
+            'forbidden_file_patterns:\n  - ""',
+        )
+        path = _tmpfile(broken)
+        try:
+            result = validator.validate(path)
+            self.assertFalse(result["ok"])
+            self.assertTrue(
+                any("forbidden_file_patterns" in e for e in result["errors"]),
+                msg=result["errors"],
+            )
+        finally:
+            path.unlink()
+
+    def test_invalid_risk_reasoning_non_string(self):
+        base = (FIXTURES / "valid-green.yaml").read_text(encoding="utf-8")
+        broken = base.replace(
+            'risk_reasoning:\n  - "Documentation-only update with narrow scope."',
+            'risk_reasoning:\n  - 123',
+        )
+        path = _tmpfile(broken)
+        try:
+            result = validator.validate(path)
+            self.assertFalse(result["ok"])
+            self.assertTrue(
+                any("risk_reasoning" in e for e in result["errors"]),
+                msg=result["errors"],
+            )
+        finally:
+            path.unlink()
+
+    def test_legacy_yellow_without_allowed_file_patterns_valid(self):
+        base = (FIXTURES / "valid-yellow.yaml").read_text(encoding="utf-8")
+        broken = base.replace(
+            'allowed_file_patterns:\n  - "src/components/Settings/**"\n',
+            "",
+        )
+        path = _tmpfile(broken)
+        try:
+            result = validator.validate(path)
+            self.assertTrue(result["ok"], msg=result["errors"])
+        finally:
+            path.unlink()
+
+    def test_legacy_red_without_allowed_file_patterns_valid(self):
+        base = (FIXTURES / "valid-red.yaml").read_text(encoding="utf-8")
+        broken = base.replace(
+            'allowed_file_patterns:\n  - "docs/auth-refactor-plan.md"\n',
+            "",
+        )
+        path = _tmpfile(broken)
+        try:
+            result = validator.validate(path)
+            self.assertTrue(result["ok"], msg=result["errors"])
+        finally:
+            path.unlink()
+
+    def test_cli_default_warns_on_missing_pattern(self):
+        base = (FIXTURES / "valid-green.yaml").read_text(encoding="utf-8")
+        broken = base.replace(
+            'allowed_file_patterns:\n  - "README.md"\n',
+            "",
+        )
+        path = _tmpfile(broken)
+        try:
+            proc = subprocess.run(
+                [sys.executable, str(SCRIPT_PATH), str(path)],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(proc.returncode, 0, msg=proc.stderr)
+            self.assertIn("WARN:", proc.stderr)
+            data = json.loads(proc.stdout)
+            self.assertIn("warnings", data)
+            self.assertTrue(data["warnings"])
+        finally:
+            path.unlink()
+
+    def test_cli_strict_fails_on_missing_pattern(self):
+        base = (FIXTURES / "valid-green.yaml").read_text(encoding="utf-8")
+        broken = base.replace(
+            'allowed_file_patterns:\n  - "README.md"\n',
+            "",
+        )
+        path = _tmpfile(broken)
+        try:
+            proc = subprocess.run(
+                [sys.executable, str(SCRIPT_PATH), "--strict", str(path)],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(proc.returncode, 1)
+            self.assertIn("allowed_file_patterns", proc.stderr)
+        finally:
+            path.unlink()
 
 
 if __name__ == "__main__":

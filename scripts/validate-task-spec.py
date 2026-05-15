@@ -9,6 +9,7 @@ tags, or merge keys.
 
 from __future__ import annotations
 
+import argparse
 import json
 import re
 import sys
@@ -49,6 +50,11 @@ RISK_MERGE_POLICY = {
 }
 DEFAULT_MAX_ITERATIONS = 2
 
+# Patterns that span the entire tree and therefore make no useful scope
+# guard for a green auto-merge task. The validator rejects them outright
+# on green specs.
+MEANINGLESS_GREEN_PATTERNS = frozenset({"*", "**", "**/*", ".", "./", "/"})
+
 
 def _present(value) -> bool:
     if value is None:
@@ -58,7 +64,27 @@ def _present(value) -> bool:
     return True
 
 
-def validate(path: Path) -> dict:
+def _check_string_list(value, field_name: str, errors: list) -> None:
+    """Validate that ``value`` is a list of non-empty strings.
+
+    Empty / missing values are tolerated by this helper — required-field
+    presence checks live elsewhere. We only enforce item-level shape.
+    """
+    if value is None:
+        return
+    if not isinstance(value, list):
+        errors.append(f"{field_name} must be a list of strings")
+        return
+    for i, item in enumerate(value):
+        if not isinstance(item, str):
+            errors.append(
+                f"{field_name}[{i}] must be a string, got {type(item).__name__}"
+            )
+        elif not item.strip():
+            errors.append(f"{field_name}[{i}] must be a non-empty string")
+
+
+def validate(path: Path, strict: bool = False) -> dict:
     try:
         text = path.read_text(encoding="utf-8")
     except OSError as exc:
@@ -142,23 +168,43 @@ def validate(path: Path) -> dict:
             "red tasks must set max_iterations: 0 (no auto-fix iterations allowed)"
         )
 
-    for list_key in (
-        "allowed_file_patterns",
-        "forbidden_file_patterns",
-        "risk_reasoning",
-    ):
-        value = spec.get(list_key)
-        if value is not None and not isinstance(value, list):
-            errors.append(f"{list_key} must be a list of strings")
+    _check_string_list(
+        spec.get("allowed_file_patterns"), "allowed_file_patterns", errors
+    )
+    _check_string_list(
+        spec.get("forbidden_file_patterns"), "forbidden_file_patterns", errors
+    )
+    _check_string_list(spec.get("risk_reasoning"), "risk_reasoning", errors)
+
+    # Green tasks must not declare globally-permissive allowed patterns;
+    # those defeat the auto-merge scope guard.
+    if risk == "green":
+        afp = spec.get("allowed_file_patterns")
+        if isinstance(afp, list):
+            for i, item in enumerate(afp):
+                if isinstance(item, str) and item.strip() in MEANINGLESS_GREEN_PATTERNS:
+                    errors.append(
+                        f"allowed_file_patterns[{i}]={item!r} is too broad for a "
+                        f"green task; green requires a specific file or glob"
+                    )
 
     hrrr = spec.get("human_review_required_reason")
     if hrrr is not None and not isinstance(hrrr, str):
         errors.append("human_review_required_reason must be a string")
 
+    # Green specs should declare an allowlist. In --strict mode this is an
+    # error; in the default (legacy-compatible) mode it is only a warning
+    # so older specs don't strand open plan PRs.
     if risk == "green" and not spec.get("allowed_file_patterns"):
-        errors.append(
-            "green tasks require allowed_file_patterns to keep auto-merge scope tight"
-        )
+        if strict:
+            errors.append(
+                "green tasks require allowed_file_patterns in --strict mode"
+            )
+        else:
+            warnings.append(
+                "green task should declare allowed_file_patterns to keep "
+                "auto-merge scope tight"
+            )
 
     if risk == "red" and not spec.get("human_review_required_reason"):
         warnings.append(
@@ -188,6 +234,7 @@ def validate(path: Path) -> dict:
         "allow_auto_fix": (
             allow_auto_fix if allow_auto_fix is not None else (risk != "red")
         ),
+        "warnings": warnings,
     }
 
     return {
@@ -199,16 +246,26 @@ def validate(path: Path) -> dict:
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) != 2:
-        print("Usage: validate-task-spec.py .ai/tasks/123.yaml", file=sys.stderr)
-        return 2
+    parser = argparse.ArgumentParser(
+        description="Validate a task-spec YAML against the Ticket #1 contract.",
+    )
+    parser.add_argument("path", help="path to the task-spec YAML")
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help=(
+            "treat missing allowed_file_patterns on green tasks as an error "
+            "(default: emit a warning, exit 0)"
+        ),
+    )
+    args = parser.parse_args(argv[1:])
 
-    path = Path(argv[1])
+    path = Path(args.path)
     if not path.exists():
         print(f"Task spec not found: {path}", file=sys.stderr)
         return 2
 
-    result = validate(path)
+    result = validate(path, strict=args.strict)
 
     for w in result["warnings"]:
         print(f"WARN: {w}", file=sys.stderr)
