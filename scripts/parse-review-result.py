@@ -49,29 +49,33 @@ def _to_bool(v: Any) -> bool:
     return False
 
 
-def _max_severity_from_findings(findings) -> str:
-    """Scan a findings list for the highest blocking severity.
+def _max_severity_from_findings(findings) -> tuple[str, bool]:
+    """Scan a findings list and report ``(max_blocking_severity, malformed)``.
 
-    Accepts only dict-shaped entries with severity in {P0, P1, P2}. "Info"
-    is recognised as a valid label but does not elevate severity (per
-    risk-policy.md). Anything else — non-dicts, unknown labels, missing
-    severity — is silently skipped.
+    Only dict entries with a string ``severity`` in the recognised set
+    ``{P0, P1, P2, Info}`` are accepted. ``Info`` is non-elevating but
+    valid. Anything else (non-dict entry, missing severity, non-string
+    severity, or an unknown severity label) counts as schema drift; the
+    caller is expected to fail closed by inspecting the ``malformed`` flag.
     """
     if not isinstance(findings, list):
-        return "none"
+        return ("none", False)
+    valid = ("P0", "P1", "P2", "Info")
     best = "none"
     best_rank = 0
     for item in findings:
         if not isinstance(item, dict):
-            continue
+            return ("P0", True)
         sev = item.get("severity")
-        if sev not in ("P0", "P1", "P2"):
+        if not isinstance(sev, str) or sev not in valid:
+            return ("P0", True)
+        if sev == "Info":
             continue
         rank = _SEVERITY_RANK[sev]
         if rank > best_rank:
             best_rank = rank
             best = sev
-    return best
+    return (best, False)
 
 
 def parse(text: str) -> dict:
@@ -96,20 +100,23 @@ def parse(text: str) -> dict:
     # Fail closed on a malformed `findings` shape: present but not a list.
     # `None`/absent is fine (no findings); a non-list scalar or dict is
     # suspicious enough to force the most-conservative effective severity.
-    findings_malformed = raw_findings is not None and not isinstance(raw_findings, list)
+    findings_top_malformed = raw_findings is not None and not isinstance(raw_findings, list)
     findings = raw_findings if isinstance(raw_findings, list) else []
 
     # Effective severity is the max of the top-level field and any blocking
     # severity in the findings list. This closes the bypass where a reviewer
     # writes `highest_severity: none` but lists a P0/P1 entry inside findings.
-    findings_severity = _max_severity_from_findings(findings)
+    # Any per-entry schema drift (non-dict, missing severity, non-string
+    # severity, or unknown severity label) also forces P0 via the second
+    # return value below.
+    findings_severity, findings_entry_malformed = _max_severity_from_findings(findings)
     if _SEVERITY_RANK[findings_severity] > _SEVERITY_RANK[top_severity]:
         effective_severity = findings_severity
     else:
         effective_severity = top_severity
 
-    if findings_malformed:
-        # Reviewer emitted a non-list `findings` field — schema violation.
+    if findings_top_malformed or findings_entry_malformed:
+        # Reviewer emitted malformed `findings` data — schema violation.
         # Force P0 so the sanity override below blocks auto-merge.
         effective_severity = "P0"
 

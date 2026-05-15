@@ -140,6 +140,72 @@ findings: "this should be a list, not a scalar string"
 summary: "Findings field has the wrong shape."
 """
 
+FINDINGS_EMPTY_LIST = """task_id: "test-empty-findings"
+risk_level: "green"
+auto_merge_allowed: true
+highest_severity: "none"
+findings: []
+summary: "Empty findings list."
+"""
+
+FINDINGS_MISSING_KEY = """task_id: "test-missing-findings"
+risk_level: "green"
+auto_merge_allowed: true
+highest_severity: "none"
+summary: "No findings key at all."
+"""
+
+FINDINGS_NON_DICT_ENTRY = """task_id: "test-non-dict"
+risk_level: "green"
+auto_merge_allowed: true
+highest_severity: "none"
+findings:
+  - "this should be a dict"
+summary: "Non-dict finding entry."
+"""
+
+FINDINGS_MISSING_SEVERITY = """task_id: "test-missing-severity"
+risk_level: "green"
+auto_merge_allowed: true
+highest_severity: "none"
+findings:
+  - title: "no severity"
+    evidence: "..."
+summary: "Finding without severity."
+"""
+
+FINDINGS_UNKNOWN_SEVERITY = """task_id: "test-unknown-severity"
+risk_level: "green"
+auto_merge_allowed: true
+highest_severity: "none"
+findings:
+  - severity: "LOW"
+    title: "Unknown severity"
+summary: "Unknown severity label."
+"""
+
+FINDINGS_NON_STRING_SEVERITY = """task_id: "test-non-string-severity"
+risk_level: "green"
+auto_merge_allowed: true
+highest_severity: "none"
+findings:
+  - severity: 123
+    title: "Numeric severity"
+summary: "Severity is an integer."
+"""
+
+FINDINGS_INFO_ONLY = """task_id: "test-info-only"
+risk_level: "green"
+auto_merge_allowed: true
+highest_severity: "none"
+findings:
+  - severity: "Info"
+    title: "Just informational"
+    evidence: "no real bug"
+    suggested_fix: "n/a"
+summary: "Info-only finding."
+"""
+
 P2_GREEN_ALLOWED_TRUE = """task_id: "test-11"
 risk_level: "green"
 auto_merge_allowed: true
@@ -290,13 +356,12 @@ class ParseReviewTests(unittest.TestCase):
         )
         self.assertFalse(r["auto_merge_allowed"])
 
-    def test_invalid_findings_entries_ignored(self):
-        # String entry, unknown severity label ("LOW"), and Info-only entries
-        # must not elevate severity and must not crash the parser.
+    def test_invalid_findings_entries_fail_closed(self):
+        # A non-dict entry or an unknown severity label is schema drift —
+        # the parser must force fail-closed rather than silently ignore it.
         r = parser.parse(FINDINGS_INVALID_ENTRIES)
-        self.assertEqual(r["highest_severity"], "none")
-        # No blocking finding, risk=green, top-level allowed=true → still allowed.
-        self.assertTrue(r["auto_merge_allowed"])
+        self.assertEqual(r["highest_severity"], "P0")
+        self.assertFalse(r["auto_merge_allowed"])
 
     def test_findings_p1_elevates_through_cli(self):
         path = _tmpfile(TOP_NONE_FINDINGS_P1)
@@ -349,6 +414,46 @@ class ParseReviewTests(unittest.TestCase):
         r = parser.parse(P0_GREEN_ALLOWED_TRUE)
         self.assertEqual(r["highest_severity"], "P0")
         self.assertFalse(r["auto_merge_allowed"])
+
+    def test_findings_missing_key_uses_top_level(self):
+        # Absent `findings` is the same as "no findings"; top-level severity
+        # decides and auto_merge stays at the reviewer's reported value.
+        r = parser.parse(FINDINGS_MISSING_KEY)
+        self.assertEqual(r["highest_severity"], "none")
+        self.assertTrue(r["auto_merge_allowed"])
+
+    def test_findings_empty_list_uses_top_level(self):
+        # An explicitly empty findings list is also "no findings".
+        r = parser.parse(FINDINGS_EMPTY_LIST)
+        self.assertEqual(r["highest_severity"], "none")
+        self.assertTrue(r["auto_merge_allowed"])
+
+    def test_findings_non_dict_entry_fails_closed(self):
+        r = parser.parse(FINDINGS_NON_DICT_ENTRY)
+        self.assertEqual(r["highest_severity"], "P0")
+        self.assertFalse(r["auto_merge_allowed"])
+
+    def test_findings_missing_severity_fails_closed(self):
+        r = parser.parse(FINDINGS_MISSING_SEVERITY)
+        self.assertEqual(r["highest_severity"], "P0")
+        self.assertFalse(r["auto_merge_allowed"])
+
+    def test_findings_unknown_severity_fails_closed(self):
+        r = parser.parse(FINDINGS_UNKNOWN_SEVERITY)
+        self.assertEqual(r["highest_severity"], "P0")
+        self.assertFalse(r["auto_merge_allowed"])
+
+    def test_findings_non_string_severity_fails_closed(self):
+        r = parser.parse(FINDINGS_NON_STRING_SEVERITY)
+        self.assertEqual(r["highest_severity"], "P0")
+        self.assertFalse(r["auto_merge_allowed"])
+
+    def test_findings_info_only_does_not_block(self):
+        # Info is recognised as non-elevating; a green + allowed review with
+        # only Info findings must keep allowed=true and severity=none.
+        r = parser.parse(FINDINGS_INFO_ONLY)
+        self.assertEqual(r["highest_severity"], "none")
+        self.assertTrue(r["auto_merge_allowed"])
 
 
 if __name__ == "__main__":
