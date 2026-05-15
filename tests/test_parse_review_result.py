@@ -140,6 +140,66 @@ findings: "this should be a list, not a scalar string"
 summary: "Findings field has the wrong shape."
 """
 
+P2_GREEN_ALLOWED_TRUE = """task_id: "test-11"
+risk_level: "green"
+auto_merge_allowed: true
+highest_severity: "P2"
+findings:
+  - severity: "P2"
+    title: "Minor style nit"
+    evidence: "evidence"
+    suggested_fix: "fix"
+summary: "P2-only on a green PR."
+"""
+
+P2_GREEN_ALLOWED_FALSE = """task_id: "test-12"
+risk_level: "green"
+auto_merge_allowed: false
+highest_severity: "P2"
+findings:
+  - severity: "P2"
+    title: "Minor"
+    evidence: "evidence"
+    suggested_fix: "fix"
+summary: "P2-only on a green PR but reviewer withheld allowed."
+"""
+
+P2_YELLOW_ALLOWED_TRUE = """task_id: "test-13"
+risk_level: "yellow"
+auto_merge_allowed: true
+highest_severity: "P2"
+findings:
+  - severity: "P2"
+    title: "Minor"
+    evidence: "evidence"
+    suggested_fix: "fix"
+summary: "P2 on a yellow PR; reviewer-allowed must still be overridden."
+"""
+
+P1_GREEN_ALLOWED_TRUE = """task_id: "test-14"
+risk_level: "green"
+auto_merge_allowed: true
+highest_severity: "P1"
+findings:
+  - severity: "P1"
+    title: "Real bug"
+    evidence: "evidence"
+    suggested_fix: "fix"
+summary: "Reviewer self-contradicted: P1 finding with allowed=true."
+"""
+
+P0_GREEN_ALLOWED_TRUE = """task_id: "test-15"
+risk_level: "green"
+auto_merge_allowed: true
+highest_severity: "P0"
+findings:
+  - severity: "P0"
+    title: "Critical"
+    evidence: "evidence"
+    suggested_fix: "fix"
+summary: "Reviewer self-contradicted: P0 finding with allowed=true."
+"""
+
 
 class ParseReviewTests(unittest.TestCase):
     def test_clean_green(self):
@@ -256,6 +316,37 @@ class ParseReviewTests(unittest.TestCase):
         # silently coerce it to an empty list; it must fall through to the
         # most-conservative effective severity (P0) and block auto-merge.
         r = parser.parse(FINDINGS_NOT_A_LIST)
+        self.assertEqual(r["highest_severity"], "P0")
+        self.assertFalse(r["auto_merge_allowed"])
+
+    def test_p2_green_allowed_true_keeps_allowed(self):
+        # P2 alone is informational (per risk-policy.md). A green PR with
+        # only P2 findings and the reviewer's auto_merge_allowed=true must
+        # keep allowed=true.
+        r = parser.parse(P2_GREEN_ALLOWED_TRUE)
+        self.assertEqual(r["highest_severity"], "P2")
+        self.assertTrue(r["auto_merge_allowed"])
+
+    def test_p2_green_allowed_false_stays_false(self):
+        # If the reviewer explicitly withholds auto-merge on a green PR
+        # despite only P2 findings, the parser must honour that.
+        r = parser.parse(P2_GREEN_ALLOWED_FALSE)
+        self.assertEqual(r["highest_severity"], "P2")
+        self.assertFalse(r["auto_merge_allowed"])
+
+    def test_p2_yellow_overrides_to_false(self):
+        # Yellow never auto-merges regardless of severity.
+        r = parser.parse(P2_YELLOW_ALLOWED_TRUE)
+        self.assertEqual(r["highest_severity"], "P2")
+        self.assertFalse(r["auto_merge_allowed"])
+
+    def test_p1_green_overrides_to_false(self):
+        r = parser.parse(P1_GREEN_ALLOWED_TRUE)
+        self.assertEqual(r["highest_severity"], "P1")
+        self.assertFalse(r["auto_merge_allowed"])
+
+    def test_p0_green_overrides_to_false(self):
+        r = parser.parse(P0_GREEN_ALLOWED_TRUE)
         self.assertEqual(r["highest_severity"], "P0")
         self.assertFalse(r["auto_merge_allowed"])
 

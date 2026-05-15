@@ -80,6 +80,16 @@ def decide(
             return _result(NEXT_HUMAN_REQUIRED, False, True, False, iteration, "yellow_human_merge")
         return _result(NEXT_HUMAN_REQUIRED, False, True, False, iteration, "merge_not_allowed")
 
+    if highest_severity == "P2":
+        # P2 is informational: a P2 alone does not block green-lane auto-merge
+        # (per risk-policy.md). Yellow always requires human merge approval,
+        # so P2 + yellow falls through to human_required.
+        if risk_level == "green" and auto_merge_allowed:
+            return _result(NEXT_AUTO_MERGE, False, False, True, iteration, "")
+        return _result(NEXT_HUMAN_REQUIRED, False, True, False, iteration, "p2_finding")
+
+    # Severity is P1 — the only remaining path. P0 was handled above and
+    # P2/none never reach here.
     if not allow_auto_fix:
         return _result(NEXT_HUMAN_REQUIRED, False, True, False, iteration, "auto_fix_disabled")
 
@@ -138,9 +148,15 @@ def _self_test() -> int:
         (dict(risk_level="yellow", highest_severity="P1", auto_merge_allowed=False,
               iteration=0, max_iterations=3, allow_auto_fix=True),
          NEXT_NEEDS_FIX),
+        (dict(risk_level="green", highest_severity="P2", auto_merge_allowed=True,
+              iteration=1, max_iterations=2, allow_auto_fix=True),
+         NEXT_AUTO_MERGE),
         (dict(risk_level="green", highest_severity="P2", auto_merge_allowed=False,
               iteration=1, max_iterations=2, allow_auto_fix=True),
-         NEXT_NEEDS_FIX),
+         NEXT_HUMAN_REQUIRED),
+        (dict(risk_level="yellow", highest_severity="P2", auto_merge_allowed=True,
+              iteration=0, max_iterations=3, allow_auto_fix=True),
+         NEXT_HUMAN_REQUIRED),
         (dict(risk_level="green", highest_severity="none", auto_merge_allowed=True,
               iteration=0, max_iterations=2, allow_auto_fix=True,
               iteration_parse_error=True),

@@ -115,8 +115,11 @@ def parse(text: str) -> dict:
 
     allowed = _to_bool(parsed.get("auto_merge_allowed", False))
 
-    # Sanity override: never trust the LLM's self-reported flag.
-    if effective_severity != "none":
+    # Sanity override. P0 and P1 are blocking and always force allowed=false.
+    # P2 is informational (per risk-policy.md "a P2 alone does not block
+    # green-lane auto-merge") and stays at the reviewer's reported value.
+    # Non-green risk levels still block regardless of severity.
+    if effective_severity in ("P0", "P1"):
         allowed = False
     if risk != "green":
         allowed = False

@@ -79,8 +79,64 @@ class DecideTests(unittest.TestCase):
         self.assertEqual(r["NEXT_ACTION"], "needs_fix")
         self.assertEqual(r["NEXT_ITERATION"], "1")
 
-    def test_p2_within_budget_needs_fix(self):
+    def test_p2_green_allowed_true_auto_merges(self):
+        r = gate.decide("green", "P2", True, 0, 2, True)
+        self.assertEqual(r["NEXT_ACTION"], "auto_merge")
+        self.assertEqual(r["AUTO_MERGE_ALLOWED"], "true")
+        self.assertEqual(r["SHOULD_FIX"], "false")
+
+    def test_p2_green_allowed_false_human_required(self):
         r = gate.decide("green", "P2", False, 0, 2, True)
+        self.assertEqual(r["NEXT_ACTION"], "human_required")
+        self.assertEqual(r["HUMAN_REQUIRED_REASON"], "p2_finding")
+        self.assertEqual(r["SHOULD_FIX"], "false")
+
+    def test_p2_yellow_human_required(self):
+        r = gate.decide("yellow", "P2", True, 0, 2, True)
+        self.assertEqual(r["NEXT_ACTION"], "human_required")
+        self.assertEqual(r["SHOULD_FIX"], "false")
+
+    def test_p2_red_human_required(self):
+        r = gate.decide("red", "P2", True, 0, 2, True)
+        self.assertEqual(r["NEXT_ACTION"], "human_required")
+        self.assertEqual(r["SHOULD_FIX"], "false")
+
+    def test_p2_unknown_human_required(self):
+        r = gate.decide("unknown", "P2", True, 0, 2, True)
+        self.assertEqual(r["NEXT_ACTION"], "human_required")
+        self.assertEqual(r["SHOULD_FIX"], "false")
+
+    def test_p2_never_returns_needs_fix(self):
+        # Parametric: P2 must not enter the fix loop under any combination
+        # of risk / allowed / iteration budget.
+        combos = [
+            ("green", True), ("green", False),
+            ("yellow", True), ("yellow", False),
+            ("red", True), ("red", False),
+            ("unknown", True), ("unknown", False),
+        ]
+        budgets = [(0, 2), (1, 2), (2, 2), (5, 2)]
+        for risk, allowed in combos:
+            for iteration, max_iter in budgets:
+                with self.subTest(risk=risk, allowed=allowed,
+                                  iteration=iteration, max_iter=max_iter):
+                    r = gate.decide(risk, "P2", allowed, iteration, max_iter, True)
+                    self.assertNotEqual(
+                        r["NEXT_ACTION"], "needs_fix",
+                        msg="P2 must never enter the fix loop",
+                    )
+                    self.assertEqual(r["SHOULD_FIX"], "false")
+
+    def test_p0_green_allowed_true_still_human_required(self):
+        # Even if reviewer self-reported allowed=true, a P0 must escalate.
+        r = gate.decide("green", "P0", True, 0, 2, True)
+        self.assertEqual(r["NEXT_ACTION"], "human_required")
+        self.assertEqual(r["HUMAN_REQUIRED_REASON"], "p0_finding")
+
+    def test_p1_green_allowed_true_iter_zero_needs_fix(self):
+        # P1 + budget left → fix loop, even if reviewer (incorrectly) set
+        # allowed=true. The gate evaluates the fix loop based on severity.
+        r = gate.decide("green", "P1", True, 0, 2, True)
         self.assertEqual(r["NEXT_ACTION"], "needs_fix")
 
     def test_override_auto_merge_allowed_true_but_p1(self):
