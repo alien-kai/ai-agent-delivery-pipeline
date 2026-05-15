@@ -129,6 +129,19 @@ def validate(path: Path) -> dict:
         elif not 0 <= max_iter <= 5:
             errors.append(f"max_iterations must be between 0 and 5, got {max_iter}")
 
+    # Red tasks never enter the AI fix loop, so any nonzero max_iterations
+    # value is contradictory. Reject it so the planner can't ship a spec
+    # that suggests a fix budget exists where it does not.
+    if (
+        risk == "red"
+        and isinstance(max_iter, int)
+        and not isinstance(max_iter, bool)
+        and max_iter != 0
+    ):
+        errors.append(
+            "red tasks must set max_iterations: 0 (no auto-fix iterations allowed)"
+        )
+
     for list_key in (
         "allowed_file_patterns",
         "forbidden_file_patterns",
@@ -152,12 +165,26 @@ def validate(path: Path) -> dict:
             "red task should declare human_review_required_reason"
         )
 
+    # Normalize max_iterations for the summary so downstream consumers never
+    # see a contradictory red+nonzero value, even if the spec is invalid.
+    if risk == "red":
+        summary_max_iter = 0
+    elif (
+        max_iter is not None
+        and isinstance(max_iter, int)
+        and not isinstance(max_iter, bool)
+        and 0 <= max_iter <= 5
+    ):
+        summary_max_iter = max_iter
+    else:
+        summary_max_iter = DEFAULT_MAX_ITERATIONS
+
     summary = {
         "ok": not errors,
         "task_id": spec.get("task_id"),
         "risk_level": risk,
         "merge_policy": merge,
-        "max_iterations": max_iter if max_iter is not None else DEFAULT_MAX_ITERATIONS,
+        "max_iterations": summary_max_iter,
         "allow_auto_fix": (
             allow_auto_fix if allow_auto_fix is not None else (risk != "red")
         ),

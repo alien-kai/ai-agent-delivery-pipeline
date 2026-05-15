@@ -142,6 +142,39 @@ class ValidateTaskSpecTests(unittest.TestCase):
         finally:
             path.unlink()
 
+    def test_red_without_max_iterations_defaults_to_zero(self):
+        # A red spec that omits max_iterations is valid; the summary must
+        # normalize it to 0 so downstream cannot think a fix budget exists.
+        base = (FIXTURES / "valid-red.yaml").read_text(encoding="utf-8")
+        stripped = "\n".join(
+            line for line in base.splitlines()
+            if not line.startswith("max_iterations:")
+        )
+        path = _tmpfile(stripped)
+        try:
+            result = validator.validate(path)
+            self.assertTrue(result["ok"], msg=result["errors"])
+            self.assertEqual(
+                result["summary"]["max_iterations"], 0,
+                msg="red task with no max_iterations must normalize to 0",
+            )
+        finally:
+            path.unlink()
+
+    def test_invalid_red_with_nonzero_max_iterations(self):
+        base = (FIXTURES / "valid-red.yaml").read_text(encoding="utf-8")
+        broken = base.replace("max_iterations: 0", "max_iterations: 3")
+        path = _tmpfile(broken)
+        try:
+            result = validator.validate(path)
+            self.assertFalse(result["ok"])
+            self.assertTrue(
+                any("max_iterations" in e for e in result["errors"]),
+                msg=result["errors"],
+            )
+        finally:
+            path.unlink()
+
     def test_backwards_compat_optional_fields_missing(self):
         legacy = REPO_ROOT / ".ai" / "tasks" / "local-smoke-001.yaml"
         result = validator.validate(legacy)
