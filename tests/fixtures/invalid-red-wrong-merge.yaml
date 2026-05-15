@@ -1,0 +1,23 @@
+task_id: "invalid-red-wrong-merge"
+source_issue: 9002
+objective: "Should fail because a red task uses the wrong merge policy."
+risk_level: "red"
+merge_policy: "auto_merge_if_green"
+max_iterations: 0
+allow_auto_fix: false
+allowed_file_patterns:
+  - "docs/plan.md"
+risk_reasoning:
+  - "Auth-related task; must be draft_only."
+human_review_required_reason: "Authentication surface."
+implementation_units:
+  - id: "unit-1"
+    goal: "Should not validate."
+    verification:
+      - "true"
+acceptance_criteria:
+  - "Validation fails."
+verification_commands:
+  - "true"
+review_requirements:
+  - "Validation must fail."

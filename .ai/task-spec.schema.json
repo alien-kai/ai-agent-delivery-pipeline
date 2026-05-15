@@ -122,6 +122,35 @@
     },
     "rollback_notes": {
       "type": "string"
+    },
+    "max_iterations": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 5
+    },
+    "allow_auto_fix": {
+      "type": "boolean"
+    },
+    "allowed_file_patterns": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "forbidden_file_patterns": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "risk_reasoning": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "human_review_required_reason": {
+      "type": "string"
     }
   },
   "additionalProperties": false

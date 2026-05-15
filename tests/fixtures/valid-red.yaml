@@ -1,0 +1,34 @@
+task_id: "test-red"
+source_issue: 1003
+objective: "Document a plan for refactoring authentication middleware."
+context: "Touches auth; plan-only."
+scope_in:
+  - "Produce a written plan at docs/auth-refactor-plan.md."
+scope_out:
+  - "No source code changes."
+risk_level: "red"
+merge_policy: "draft_only"
+max_iterations: 0
+allow_auto_fix: false
+allowed_file_patterns:
+  - "docs/auth-refactor-plan.md"
+forbidden_file_patterns:
+  - "src/auth/**"
+  - "src/middleware/**"
+risk_reasoning:
+  - "Authentication surface; potential for session-token regression."
+human_review_required_reason: "Authentication and session handling require security review."
+affected_areas:
+  - "auth"
+implementation_units:
+  - id: "unit-1"
+    goal: "Write the plan document; no production code."
+    verification:
+      - "test -f docs/auth-refactor-plan.md"
+acceptance_criteria:
+  - "Plan document exists and lists rollback steps."
+verification_commands:
+  - "test -f docs/auth-refactor-plan.md"
+review_requirements:
+  - "Security review by maintainer before any implementation PR."
+rollback_notes: "Delete docs/auth-refactor-plan.md if the direction changes."
