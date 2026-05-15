@@ -65,15 +65,21 @@ def _present(value) -> bool:
 
 
 def _check_string_list(value, field_name: str, errors: list) -> None:
-    """Validate that ``value`` is a list of non-empty strings.
+    """Validate that ``value`` is a non-empty list of non-empty strings.
 
-    Empty / missing values are tolerated by this helper — required-field
-    presence checks live elsewhere. We only enforce item-level shape.
+    A missing field (``value is None``) is tolerated here — required-field
+    presence checks live elsewhere. A field that is *present* must be a
+    list with at least one item, and every item must be a non-empty
+    string. An explicitly empty list is rejected so a green task cannot
+    declare an empty scope guard and still validate.
     """
     if value is None:
         return
     if not isinstance(value, list):
         errors.append(f"{field_name} must be a list of strings")
+        return
+    if len(value) == 0:
+        errors.append(f"{field_name} must be a non-empty list of strings")
         return
     for i, item in enumerate(value):
         if not isinstance(item, str):
@@ -192,10 +198,11 @@ def validate(path: Path, strict: bool = False) -> dict:
     if hrrr is not None and not isinstance(hrrr, str):
         errors.append("human_review_required_reason must be a string")
 
-    # Green specs should declare an allowlist. In --strict mode this is an
-    # error; in the default (legacy-compatible) mode it is only a warning
-    # so older specs don't strand open plan PRs.
-    if risk == "green" and not spec.get("allowed_file_patterns"):
+    # Green specs should declare an allowlist. We only treat the *missing
+    # key* case as the legacy-compatible warning; an explicitly empty list
+    # is a clearer violation and is rejected by `_check_string_list` above
+    # in both modes. In --strict mode the missing key is also an error.
+    if risk == "green" and "allowed_file_patterns" not in spec:
         if strict:
             errors.append(
                 "green tasks require allowed_file_patterns in --strict mode"

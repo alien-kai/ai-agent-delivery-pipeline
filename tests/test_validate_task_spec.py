@@ -317,6 +317,93 @@ class ValidateTaskSpecTests(unittest.TestCase):
         finally:
             path.unlink()
 
+    def test_green_explicit_empty_allowed_file_patterns_invalid(self):
+        # An explicitly empty list violates the non-empty-list contract;
+        # it must be an error in both default and strict modes, not just
+        # the legacy "missing key" warning.
+        base = (FIXTURES / "valid-green.yaml").read_text(encoding="utf-8")
+        broken = base.replace(
+            'allowed_file_patterns:\n  - "README.md"',
+            'allowed_file_patterns: []',
+        )
+        path = _tmpfile(broken)
+        try:
+            result_default = validator.validate(path)
+            self.assertFalse(result_default["ok"])
+            self.assertTrue(
+                any(
+                    "allowed_file_patterns" in e and "non-empty" in e
+                    for e in result_default["errors"]
+                ),
+                msg=result_default["errors"],
+            )
+
+            result_strict = validator.validate(path, strict=True)
+            self.assertFalse(result_strict["ok"])
+        finally:
+            path.unlink()
+
+    def test_empty_forbidden_file_patterns_invalid(self):
+        base = (FIXTURES / "valid-green.yaml").read_text(encoding="utf-8")
+        broken = base.replace(
+            'forbidden_file_patterns:\n  - "src/**"\n  - ".env*"',
+            'forbidden_file_patterns: []',
+        )
+        path = _tmpfile(broken)
+        try:
+            result = validator.validate(path)
+            self.assertFalse(result["ok"])
+            self.assertTrue(
+                any(
+                    "forbidden_file_patterns" in e and "non-empty" in e
+                    for e in result["errors"]
+                ),
+                msg=result["errors"],
+            )
+        finally:
+            path.unlink()
+
+    def test_empty_risk_reasoning_invalid(self):
+        base = (FIXTURES / "valid-green.yaml").read_text(encoding="utf-8")
+        broken = base.replace(
+            'risk_reasoning:\n'
+            '  - "Documentation-only update with narrow scope."\n'
+            '  - "No auth, payment, privacy, dependency, or schema impact."',
+            'risk_reasoning: []',
+        )
+        path = _tmpfile(broken)
+        try:
+            result = validator.validate(path)
+            self.assertFalse(result["ok"])
+            self.assertTrue(
+                any(
+                    "risk_reasoning" in e and "non-empty" in e
+                    for e in result["errors"]
+                ),
+                msg=result["errors"],
+            )
+        finally:
+            path.unlink()
+
+    def test_cli_explicit_empty_pattern_list_exits_nonzero(self):
+        # Even in default mode, an explicit empty list is a hard error and
+        # the CLI must exit non-zero.
+        base = (FIXTURES / "valid-green.yaml").read_text(encoding="utf-8")
+        broken = base.replace(
+            'allowed_file_patterns:\n  - "README.md"',
+            'allowed_file_patterns: []',
+        )
+        path = _tmpfile(broken)
+        try:
+            proc = subprocess.run(
+                [sys.executable, str(SCRIPT_PATH), str(path)],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(proc.returncode, 1)
+            self.assertIn("allowed_file_patterns", proc.stderr)
+        finally:
+            path.unlink()
+
     def test_invalid_risk_reasoning_non_string(self):
         base = (FIXTURES / "valid-green.yaml").read_text(encoding="utf-8")
         broken = base.replace(
