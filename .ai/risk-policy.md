@@ -95,13 +95,24 @@ then re-runs review. To prevent runaway loops:
 
 ### Severity routing
 
-- **P0 finding** → always `ai:human-required`. Never auto-fix.
-- **P1 finding** → auto-fix only when all of:
+- **P0 finding** → always `ai:human-required`. Never enters the AI fix
+  loop. Never auto-merges, regardless of risk or reviewer self-report.
+- **P1 finding** → may enter the bounded AI fix loop only when all of:
   - risk is `green` or `yellow`,
   - `allow_auto_fix` is true,
   - current iteration < `max_iterations`.
-- **P2 finding** → may auto-fix under the same conditions, but a P2
-  alone does not block green-lane auto-merge if no P0/P1 are present.
+
+  Otherwise the PR is routed to `ai:human-required` (or
+  `ai:max-iterations-reached` once the budget is exhausted). Never
+  auto-merges.
+- **P2 finding** → never enters the AI fix loop and never returns
+  `needs_fix`. Routing:
+  - green + `auto_merge_allowed=true` → may `auto_merge`.
+  - green + `auto_merge_allowed=false` → `ai:human-required`.
+  - yellow / red / unknown → `ai:human-required`.
+- **No findings** (`highest_severity=none`):
+  - green + `auto_merge_allowed=true` → may `auto_merge`.
+  - yellow / red / unknown → `ai:human-required`.
 
 ### Risk routing
 
