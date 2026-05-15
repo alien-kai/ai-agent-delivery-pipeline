@@ -120,6 +120,46 @@ class DecideTests(unittest.TestCase):
         self.assertIn("NEXT_ACTION=needs_fix", proc.stdout)
         self.assertIn("NEXT_ITERATION=1", proc.stdout)
 
+    def test_iteration_parse_error_routes_human_required(self):
+        r = gate.decide("green", "none", True, 0, 2, True, iteration_parse_error=True)
+        self.assertEqual(r["NEXT_ACTION"], "human_required")
+        self.assertEqual(r["HUMAN_REQUIRED_REASON"], "iteration_parse_error")
+        self.assertEqual(r["SHOULD_FIX"], "false")
+        self.assertEqual(r["SHOULD_STOP"], "true")
+        self.assertEqual(r["AUTO_MERGE_ALLOWED"], "false")
+
+    def test_iteration_parse_error_overrides_clean_green_auto_merge(self):
+        # Even a clean green PR that would otherwise auto-merge must escalate
+        # when the iteration count cannot be trusted.
+        r = gate.decide("green", "none", True, 0, 2, True, iteration_parse_error=True)
+        self.assertNotEqual(r["NEXT_ACTION"], "auto_merge")
+
+    def test_iteration_parse_error_overrides_p1_needs_fix(self):
+        # A fixable P1 must NOT enter the fix loop when iteration is malformed —
+        # otherwise the loop bound could be silently violated.
+        r = gate.decide("green", "P1", False, 0, 2, True, iteration_parse_error=True)
+        self.assertEqual(r["NEXT_ACTION"], "human_required")
+        self.assertEqual(r["HUMAN_REQUIRED_REASON"], "iteration_parse_error")
+        self.assertEqual(r["SHOULD_FIX"], "false")
+
+    def test_cli_iteration_parse_error_flag(self):
+        proc = subprocess.run(
+            [
+                sys.executable, str(SCRIPT_PATH),
+                "--risk-level", "green",
+                "--highest-severity", "none",
+                "--auto-merge-allowed", "true",
+                "--iteration", "0",
+                "--max-iterations", "2",
+                "--allow-auto-fix", "true",
+                "--iteration-parse-error", "true",
+            ],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(proc.returncode, 0, msg=proc.stderr)
+        self.assertIn("NEXT_ACTION=human_required", proc.stdout)
+        self.assertIn("HUMAN_REQUIRED_REASON=iteration_parse_error", proc.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

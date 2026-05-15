@@ -49,7 +49,16 @@ def decide(
     iteration: int,
     max_iterations: int,
     allow_auto_fix: bool,
+    iteration_parse_error: bool = False,
 ) -> dict:
+    # Fail-closed: a malformed iteration count means we cannot honour the
+    # loop bound. Escalate before any other policy runs.
+    if iteration_parse_error:
+        return _result(
+            NEXT_HUMAN_REQUIRED, False, True, False, iteration,
+            "iteration_parse_error",
+        )
+
     if risk_level not in VALID_RISK:
         risk_level = "unknown"
     if highest_severity not in VALID_SEVERITY:
@@ -132,6 +141,14 @@ def _self_test() -> int:
         (dict(risk_level="green", highest_severity="P2", auto_merge_allowed=False,
               iteration=1, max_iterations=2, allow_auto_fix=True),
          NEXT_NEEDS_FIX),
+        (dict(risk_level="green", highest_severity="none", auto_merge_allowed=True,
+              iteration=0, max_iterations=2, allow_auto_fix=True,
+              iteration_parse_error=True),
+         NEXT_HUMAN_REQUIRED),
+        (dict(risk_level="green", highest_severity="P1", auto_merge_allowed=False,
+              iteration=0, max_iterations=2, allow_auto_fix=True,
+              iteration_parse_error=True),
+         NEXT_HUMAN_REQUIRED),
     ]
     fails = []
     for inp, expected in cases:
@@ -154,6 +171,11 @@ def main(argv: list[str]) -> int:
     p.add_argument("--iteration", type=int, default=0)
     p.add_argument("--max-iterations", type=int, default=2)
     p.add_argument("--allow-auto-fix", default="true")
+    p.add_argument(
+        "--iteration-parse-error",
+        default="false",
+        help="set to 'true' when get-pr-iteration.py reported a parse error",
+    )
     p.add_argument("--self-test", action="store_true")
     args = p.parse_args(argv[1:])
 
@@ -180,6 +202,7 @@ def main(argv: list[str]) -> int:
         iteration=args.iteration,
         max_iterations=args.max_iterations,
         allow_auto_fix=_str_bool(args.allow_auto_fix),
+        iteration_parse_error=_str_bool(args.iteration_parse_error),
     )
     _emit(result)
     return 0

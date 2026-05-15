@@ -178,6 +178,13 @@ def _scalar(s: str):
     s = s.strip()
     if s == "":
         return None
+    # Flow-style empty containers. We don't support general flow style, but
+    # `[]` and `{}` are commonly used even in otherwise block-style YAML and
+    # must round-trip as real empty containers (not the string "[]").
+    if s == "[]":
+        return []
+    if s == "{}":
+        return {}
     if len(s) >= 2 and s[0] == s[-1] and s[0] in ("'", '"'):
         return s[1:-1]
     if s == "true":

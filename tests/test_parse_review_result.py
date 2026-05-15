@@ -132,6 +132,14 @@ findings:
 summary: "Findings list contains invalid and Info entries."
 """
 
+FINDINGS_NOT_A_LIST = """task_id: "test-10"
+risk_level: "green"
+auto_merge_allowed: true
+highest_severity: "none"
+findings: "this should be a list, not a scalar string"
+summary: "Findings field has the wrong shape."
+"""
+
 
 class ParseReviewTests(unittest.TestCase):
     def test_clean_green(self):
@@ -242,6 +250,14 @@ class ParseReviewTests(unittest.TestCase):
             self.assertIn("AUTO_MERGE_ALLOWED=false", proc.stdout)
         finally:
             path.unlink()
+
+    def test_findings_not_a_list_fails_closed(self):
+        # A scalar `findings` value violates the schema. The parser must not
+        # silently coerce it to an empty list; it must fall through to the
+        # most-conservative effective severity (P0) and block auto-merge.
+        r = parser.parse(FINDINGS_NOT_A_LIST)
+        self.assertEqual(r["highest_severity"], "P0")
+        self.assertFalse(r["auto_merge_allowed"])
 
 
 if __name__ == "__main__":

@@ -92,9 +92,12 @@ def parse(text: str) -> dict:
         # Conservative default: assume the worst when the reviewer omitted it.
         top_severity = "P0"
 
-    findings = parsed.get("findings") or []
-    if not isinstance(findings, list):
-        findings = []
+    raw_findings = parsed.get("findings")
+    # Fail closed on a malformed `findings` shape: present but not a list.
+    # `None`/absent is fine (no findings); a non-list scalar or dict is
+    # suspicious enough to force the most-conservative effective severity.
+    findings_malformed = raw_findings is not None and not isinstance(raw_findings, list)
+    findings = raw_findings if isinstance(raw_findings, list) else []
 
     # Effective severity is the max of the top-level field and any blocking
     # severity in the findings list. This closes the bypass where a reviewer
@@ -104,6 +107,11 @@ def parse(text: str) -> dict:
         effective_severity = findings_severity
     else:
         effective_severity = top_severity
+
+    if findings_malformed:
+        # Reviewer emitted a non-list `findings` field — schema violation.
+        # Force P0 so the sanity override below blocks auto-merge.
+        effective_severity = "P0"
 
     allowed = _to_bool(parsed.get("auto_merge_allowed", False))
 

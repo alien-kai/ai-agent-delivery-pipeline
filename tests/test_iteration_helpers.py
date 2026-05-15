@@ -38,35 +38,60 @@ def _tmp(contents: str, suffix: str = ".yaml") -> Path:
 
 
 class GetPRIterationTests(unittest.TestCase):
-    def test_no_labels_returns_zero(self):
-        self.assertEqual(iter_mod.extract_iteration([]), 0)
+    def test_empty_list_returns_zero_no_error(self):
+        self.assertEqual(iter_mod.extract_iteration([]), (0, False))
 
-    def test_no_iter_labels_returns_zero(self):
+    def test_no_iter_labels_returns_zero_no_error(self):
         labels = [{"name": "ai:review"}, {"name": "risk:green"}]
-        self.assertEqual(iter_mod.extract_iteration(labels), 0)
+        self.assertEqual(iter_mod.extract_iteration(labels), (0, False))
 
     def test_single_iter_label(self):
         labels = [{"name": "ai:iter-1"}, {"name": "ai:review"}]
-        self.assertEqual(iter_mod.extract_iteration(labels), 1)
+        self.assertEqual(iter_mod.extract_iteration(labels), (1, False))
 
     def test_multiple_iter_labels_picks_max(self):
         labels = [{"name": "ai:iter-1"}, {"name": "ai:iter-2"}, {"name": "ai:iter-3"}]
-        self.assertEqual(iter_mod.extract_iteration(labels), 3)
+        self.assertEqual(iter_mod.extract_iteration(labels), (3, False))
 
     def test_gh_object_wrapper(self):
         data = {"labels": [{"name": "ai:iter-2"}]}
-        self.assertEqual(iter_mod.extract_iteration(data), 2)
+        self.assertEqual(iter_mod.extract_iteration(data), (2, False))
 
-    def test_array_of_strings(self):
-        self.assertEqual(iter_mod.extract_iteration(["ai:iter-5", "x"]), 5)
+    def test_dict_without_labels_key_treated_as_empty(self):
+        # gh always emits at least `labels: []`; a dict without that key is
+        # unusual but not a parse failure — treat as empty.
+        self.assertEqual(iter_mod.extract_iteration({"unrelated": "x"}), (0, False))
 
-    def test_malformed_does_not_crash(self):
-        self.assertEqual(iter_mod.extract_iteration(None), 0)
-        self.assertEqual(iter_mod.extract_iteration(42), 0)
-        self.assertEqual(iter_mod.extract_iteration("garbage"), 0)
-        self.assertEqual(iter_mod.extract_iteration({"unrelated": "x"}), 0)
+    def test_top_level_none_fails_closed(self):
+        self.assertEqual(iter_mod.extract_iteration(None), (0, True))
 
-    def test_cli_via_stdin(self):
+    def test_top_level_int_fails_closed(self):
+        self.assertEqual(iter_mod.extract_iteration(42), (0, True))
+
+    def test_top_level_string_fails_closed(self):
+        self.assertEqual(iter_mod.extract_iteration("garbage"), (0, True))
+
+    def test_strings_as_label_items_fail_closed(self):
+        # gh emits dict items; a list of bare strings is off-spec.
+        self.assertEqual(iter_mod.extract_iteration(["ai:iter-5", "x"]), (0, True))
+
+    def test_labels_not_a_list_fails_closed(self):
+        self.assertEqual(iter_mod.extract_iteration({"labels": "not a list"}), (0, True))
+
+    def test_label_name_not_a_string_fails_closed(self):
+        self.assertEqual(iter_mod.extract_iteration([{"name": 42}]), (0, True))
+
+    def test_label_missing_name_fails_closed(self):
+        self.assertEqual(iter_mod.extract_iteration([{"color": "red"}]), (0, True))
+
+    def test_malformed_iter_suffix_fails_closed(self):
+        # `ai:iter-x` looks like an iteration label but has a non-numeric suffix.
+        self.assertEqual(
+            iter_mod.extract_iteration([{"name": "ai:iter-x"}]),
+            (0, True),
+        )
+
+    def test_cli_via_stdin_emits_both_env_vars(self):
         labels = json.dumps([{"name": "ai:iter-2"}])
         proc = subprocess.run(
             [sys.executable, str(ITER_SCRIPT)],
@@ -74,8 +99,9 @@ class GetPRIterationTests(unittest.TestCase):
         )
         self.assertEqual(proc.returncode, 0, msg=proc.stderr)
         self.assertIn("CURRENT_ITERATION=2", proc.stdout)
+        self.assertIn("ITERATION_PARSE_ERROR=false", proc.stdout)
 
-    def test_cli_via_file(self):
+    def test_cli_via_file_emits_both_env_vars(self):
         path = _tmp(json.dumps({"labels": [{"name": "ai:iter-3"}]}), suffix=".json")
         try:
             proc = subprocess.run(
@@ -84,16 +110,36 @@ class GetPRIterationTests(unittest.TestCase):
             )
             self.assertEqual(proc.returncode, 0, msg=proc.stderr)
             self.assertIn("CURRENT_ITERATION=3", proc.stdout)
+            self.assertIn("ITERATION_PARSE_ERROR=false", proc.stdout)
         finally:
             path.unlink()
 
-    def test_cli_malformed_json_does_not_crash(self):
+    def test_cli_invalid_json_exits_nonzero(self):
         proc = subprocess.run(
             [sys.executable, str(ITER_SCRIPT)],
             input="not json", capture_output=True, text=True,
         )
-        self.assertEqual(proc.returncode, 0, msg=proc.stderr)
+        self.assertEqual(proc.returncode, 1, msg=proc.stdout)
         self.assertIn("CURRENT_ITERATION=0", proc.stdout)
+        self.assertIn("ITERATION_PARSE_ERROR=true", proc.stdout)
+
+    def test_cli_structural_error_exits_nonzero(self):
+        labels = json.dumps({"labels": "not a list"})
+        proc = subprocess.run(
+            [sys.executable, str(ITER_SCRIPT)],
+            input=labels, capture_output=True, text=True,
+        )
+        self.assertEqual(proc.returncode, 1, msg=proc.stdout)
+        self.assertIn("ITERATION_PARSE_ERROR=true", proc.stdout)
+
+    def test_cli_iter_like_malformed_exits_nonzero(self):
+        labels = json.dumps([{"name": "ai:iter-x"}])
+        proc = subprocess.run(
+            [sys.executable, str(ITER_SCRIPT)],
+            input=labels, capture_output=True, text=True,
+        )
+        self.assertEqual(proc.returncode, 1, msg=proc.stdout)
+        self.assertIn("ITERATION_PARSE_ERROR=true", proc.stdout)
 
 
 class GetTaskMaxIterationsTests(unittest.TestCase):
