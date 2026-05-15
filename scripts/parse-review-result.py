@@ -22,6 +22,7 @@ from _yamlmini import parse_yaml  # noqa: E402
 
 VALID_RISK = ("green", "yellow", "red", "unknown")
 VALID_SEVERITY = ("none", "P2", "P1", "P0")
+_SEVERITY_RANK = {"none": 0, "P2": 1, "P1": 2, "P0": 3}
 
 _FENCE_RE = re.compile(
     r"```(?:yaml|yml)?\s*\n(.*?)\n```",
@@ -48,6 +49,31 @@ def _to_bool(v: Any) -> bool:
     return False
 
 
+def _max_severity_from_findings(findings) -> str:
+    """Scan a findings list for the highest blocking severity.
+
+    Accepts only dict-shaped entries with severity in {P0, P1, P2}. "Info"
+    is recognised as a valid label but does not elevate severity (per
+    risk-policy.md). Anything else — non-dicts, unknown labels, missing
+    severity — is silently skipped.
+    """
+    if not isinstance(findings, list):
+        return "none"
+    best = "none"
+    best_rank = 0
+    for item in findings:
+        if not isinstance(item, dict):
+            continue
+        sev = item.get("severity")
+        if sev not in ("P0", "P1", "P2"):
+            continue
+        rank = _SEVERITY_RANK[sev]
+        if rank > best_rank:
+            best_rank = rank
+            best = sev
+    return best
+
+
 def parse(text: str) -> dict:
     body = extract_yaml_block(text)
     try:
@@ -61,27 +87,36 @@ def parse(text: str) -> dict:
     if risk not in VALID_RISK:
         risk = "unknown"
 
-    severity = parsed.get("highest_severity")
-    if severity not in VALID_SEVERITY:
+    top_severity = parsed.get("highest_severity")
+    if top_severity not in VALID_SEVERITY:
         # Conservative default: assume the worst when the reviewer omitted it.
-        severity = "P0"
-
-    allowed = _to_bool(parsed.get("auto_merge_allowed", False))
-
-    # Sanity override: never trust the LLM's self-reported flag.
-    if severity != "none":
-        allowed = False
-    if risk != "green":
-        allowed = False
+        top_severity = "P0"
 
     findings = parsed.get("findings") or []
     if not isinstance(findings, list):
         findings = []
 
+    # Effective severity is the max of the top-level field and any blocking
+    # severity in the findings list. This closes the bypass where a reviewer
+    # writes `highest_severity: none` but lists a P0/P1 entry inside findings.
+    findings_severity = _max_severity_from_findings(findings)
+    if _SEVERITY_RANK[findings_severity] > _SEVERITY_RANK[top_severity]:
+        effective_severity = findings_severity
+    else:
+        effective_severity = top_severity
+
+    allowed = _to_bool(parsed.get("auto_merge_allowed", False))
+
+    # Sanity override: never trust the LLM's self-reported flag.
+    if effective_severity != "none":
+        allowed = False
+    if risk != "green":
+        allowed = False
+
     return {
         "task_id": parsed.get("task_id") or "",
         "risk_level": risk,
-        "highest_severity": severity,
+        "highest_severity": effective_severity,
         "auto_merge_allowed": allowed,
         "findings": findings,
         "summary": parsed.get("summary") or "",

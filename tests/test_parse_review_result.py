@@ -95,6 +95,43 @@ MALFORMED = """this is not yaml at all
 no fields here
 """
 
+TOP_NONE_FINDINGS_P1 = """task_id: "test-7"
+risk_level: "green"
+auto_merge_allowed: true
+highest_severity: "none"
+findings:
+  - severity: "P1"
+    title: "Bug hidden in findings"
+    evidence: "Top-level says none but a P1 was filed."
+    suggested_fix: "fix it"
+summary: "Reviewer self-contradiction."
+"""
+
+TOP_P2_FINDINGS_P0 = """task_id: "test-8"
+risk_level: "green"
+auto_merge_allowed: true
+highest_severity: "P2"
+findings:
+  - severity: "P0"
+    title: "Critical"
+    evidence: "evidence"
+    suggested_fix: "fix"
+summary: "P0 hidden under P2 top-level."
+"""
+
+FINDINGS_INVALID_ENTRIES = """task_id: "test-9"
+risk_level: "green"
+auto_merge_allowed: true
+highest_severity: "none"
+findings:
+  - "this is a string, not a dict"
+  - severity: "LOW"
+    title: "Unknown severity label"
+  - severity: "Info"
+    title: "Informational only"
+summary: "Findings list contains invalid and Info entries."
+"""
+
 
 class ParseReviewTests(unittest.TestCase):
     def test_clean_green(self):
@@ -163,6 +200,46 @@ class ParseReviewTests(unittest.TestCase):
             self.assertEqual(proc.returncode, 0, msg=proc.stderr)
             self.assertIn("AUTO_MERGE_ALLOWED=false", proc.stdout)
             self.assertIn("HIGHEST_SEVERITY=P1", proc.stdout)
+        finally:
+            path.unlink()
+
+    def test_findings_p1_elevates_severity(self):
+        r = parser.parse(TOP_NONE_FINDINGS_P1)
+        self.assertEqual(
+            r["highest_severity"], "P1",
+            msg="Top-level highest_severity=none must be elevated when findings contains P1",
+        )
+        self.assertFalse(
+            r["auto_merge_allowed"],
+            msg="A P1 in findings must force AUTO_MERGE_ALLOWED=false",
+        )
+
+    def test_findings_p0_overrides_top_p2(self):
+        r = parser.parse(TOP_P2_FINDINGS_P0)
+        self.assertEqual(
+            r["highest_severity"], "P0",
+            msg="A P0 in findings must override a lower top-level highest_severity",
+        )
+        self.assertFalse(r["auto_merge_allowed"])
+
+    def test_invalid_findings_entries_ignored(self):
+        # String entry, unknown severity label ("LOW"), and Info-only entries
+        # must not elevate severity and must not crash the parser.
+        r = parser.parse(FINDINGS_INVALID_ENTRIES)
+        self.assertEqual(r["highest_severity"], "none")
+        # No blocking finding, risk=green, top-level allowed=true → still allowed.
+        self.assertTrue(r["auto_merge_allowed"])
+
+    def test_findings_p1_elevates_through_cli(self):
+        path = _tmpfile(TOP_NONE_FINDINGS_P1)
+        try:
+            proc = subprocess.run(
+                [sys.executable, str(SCRIPT_PATH), str(path)],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(proc.returncode, 0, msg=proc.stderr)
+            self.assertIn("HIGHEST_SEVERITY=P1", proc.stdout)
+            self.assertIn("AUTO_MERGE_ALLOWED=false", proc.stdout)
         finally:
             path.unlink()
 
