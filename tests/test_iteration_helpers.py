@@ -163,7 +163,7 @@ class GetTaskMaxIterationsTests(unittest.TestCase):
     def test_out_of_range_returns_error(self):
         result = max_iter_mod.extract("max_iterations: 99\nrisk_level: green\n")
         self.assertIsNone(result["max_iterations"])
-        self.assertIsNotNone(result["max_iterations_error"])
+        self.assertTrue(result["errors"])
 
     def test_negative_is_rejected(self):
         result = max_iter_mod.extract("max_iterations: -1\nrisk_level: green\n")
@@ -208,6 +208,103 @@ class GetTaskMaxIterationsTests(unittest.TestCase):
             )
             self.assertEqual(proc.returncode, 1)
             self.assertIn("max_iterations", proc.stderr)
+        finally:
+            path.unlink()
+
+    def test_red_missing_max_iterations_normalized_to_zero(self):
+        result = max_iter_mod.extract("risk_level: red\nmerge_policy: draft_only\n")
+        self.assertEqual(result["max_iterations"], 0)
+        self.assertFalse(result["allow_auto_fix"])
+        self.assertFalse(result["errors"])
+
+    def test_red_nonzero_max_iterations_rejected(self):
+        result = max_iter_mod.extract(
+            "risk_level: red\nmerge_policy: draft_only\nmax_iterations: 3\n"
+        )
+        self.assertIsNone(result["max_iterations"])
+        self.assertTrue(result["errors"])
+        self.assertTrue(any("max_iterations" in e for e in result["errors"]))
+        # Fail-closed: helper must not assert a usable budget.
+        self.assertFalse(result["allow_auto_fix"])
+
+    def test_red_allow_auto_fix_true_rejected(self):
+        result = max_iter_mod.extract(
+            "risk_level: red\nmerge_policy: draft_only\nallow_auto_fix: true\n"
+        )
+        self.assertTrue(result["errors"])
+        self.assertTrue(any("allow_auto_fix" in e for e in result["errors"]))
+        self.assertFalse(result["allow_auto_fix"])
+        self.assertIsNone(result["max_iterations"])
+
+    def test_yellow_defaults_to_two(self):
+        result = max_iter_mod.extract("risk_level: yellow\n")
+        self.assertEqual(result["max_iterations"], 2)
+        self.assertTrue(result["allow_auto_fix"])
+        self.assertFalse(result["errors"])
+
+    def test_missing_risk_level_fails_closed(self):
+        result = max_iter_mod.extract("max_iterations: 2\n")
+        self.assertIsNone(result["max_iterations"])
+        self.assertFalse(result["allow_auto_fix"])
+        self.assertTrue(result["errors"])
+
+    def test_unknown_risk_level_fails_closed(self):
+        result = max_iter_mod.extract(
+            "risk_level: unknown\nmax_iterations: 2\n"
+        )
+        self.assertIsNone(result["max_iterations"])
+        self.assertFalse(result["allow_auto_fix"])
+        self.assertTrue(result["errors"])
+
+    def test_cli_red_nonzero_exits_nonzero(self):
+        path = _tmp(
+            "risk_level: red\nmerge_policy: draft_only\nmax_iterations: 3\n"
+        )
+        try:
+            proc = subprocess.run(
+                [sys.executable, str(MAX_ITER_SCRIPT), str(path)],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(proc.returncode, 1)
+            self.assertIn("max_iterations", proc.stderr)
+        finally:
+            path.unlink()
+
+    def test_cli_red_allow_auto_fix_true_exits_nonzero(self):
+        path = _tmp(
+            "risk_level: red\nmerge_policy: draft_only\nallow_auto_fix: true\n"
+        )
+        try:
+            proc = subprocess.run(
+                [sys.executable, str(MAX_ITER_SCRIPT), str(path)],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(proc.returncode, 1)
+            self.assertIn("allow_auto_fix", proc.stderr)
+        finally:
+            path.unlink()
+
+    def test_cli_missing_risk_exits_nonzero(self):
+        path = _tmp("max_iterations: 2\n")
+        try:
+            proc = subprocess.run(
+                [sys.executable, str(MAX_ITER_SCRIPT), str(path)],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(proc.returncode, 1)
+            self.assertIn("risk_level", proc.stderr)
+        finally:
+            path.unlink()
+
+    def test_cli_unknown_risk_exits_nonzero(self):
+        path = _tmp("risk_level: unknown\nmax_iterations: 2\n")
+        try:
+            proc = subprocess.run(
+                [sys.executable, str(MAX_ITER_SCRIPT), str(path)],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(proc.returncode, 1)
+            self.assertIn("risk_level", proc.stderr)
         finally:
             path.unlink()
 
