@@ -206,6 +206,64 @@ findings:
 summary: "Info-only finding."
 """
 
+FINDINGS_P2_MISSING_REQUIRED = """task_id: "test-p2-missing-required"
+risk_level: "green"
+auto_merge_allowed: true
+highest_severity: "P2"
+findings:
+  - severity: "P2"
+summary: "P2 finding missing title/evidence/suggested_fix."
+"""
+
+FINDINGS_P2_EMPTY_TITLE = """task_id: "test-p2-empty-title"
+risk_level: "green"
+auto_merge_allowed: true
+highest_severity: "P2"
+findings:
+  - severity: "P2"
+    title: ""
+    evidence: "evidence text"
+    suggested_fix: "fix text"
+summary: "P2 finding with empty title."
+"""
+
+FINDINGS_P2_EMPTY_EVIDENCE = """task_id: "test-p2-empty-evidence"
+risk_level: "green"
+auto_merge_allowed: true
+highest_severity: "P2"
+findings:
+  - severity: "P2"
+    title: "title text"
+    evidence: ""
+    suggested_fix: "fix text"
+summary: "P2 finding with empty evidence."
+"""
+
+FINDINGS_P2_EMPTY_SUGGESTED_FIX = """task_id: "test-p2-empty-suggested-fix"
+risk_level: "green"
+auto_merge_allowed: true
+highest_severity: "P2"
+findings:
+  - severity: "P2"
+    title: "title text"
+    evidence: "evidence text"
+    suggested_fix: ""
+summary: "P2 finding with empty suggested_fix."
+"""
+
+FINDINGS_P2_EXTRA_KEY = """task_id: "test-p2-extra-key"
+risk_level: "green"
+auto_merge_allowed: true
+highest_severity: "P2"
+findings:
+  - severity: "P2"
+    title: "title text"
+    evidence: "evidence text"
+    suggested_fix: "fix text"
+    extra: "unexpected"
+summary: "P2 finding with an extra schema-drift key."
+"""
+
 P2_GREEN_ALLOWED_TRUE = """task_id: "test-11"
 risk_level: "green"
 auto_merge_allowed: true
@@ -454,6 +512,36 @@ class ParseReviewTests(unittest.TestCase):
         r = parser.parse(FINDINGS_INFO_ONLY)
         self.assertEqual(r["highest_severity"], "none")
         self.assertTrue(r["auto_merge_allowed"])
+
+    def test_findings_p2_missing_required_fields_fail_closed(self):
+        # A P2 entry with only `severity` set is a schema violation; it
+        # must not be allowed to ride P2's non-blocking semantics.
+        r = parser.parse(FINDINGS_P2_MISSING_REQUIRED)
+        self.assertEqual(r["highest_severity"], "P0")
+        self.assertFalse(r["auto_merge_allowed"])
+
+    def test_findings_p2_empty_title_fails_closed(self):
+        r = parser.parse(FINDINGS_P2_EMPTY_TITLE)
+        self.assertEqual(r["highest_severity"], "P0")
+        self.assertFalse(r["auto_merge_allowed"])
+
+    def test_findings_p2_empty_evidence_fails_closed(self):
+        r = parser.parse(FINDINGS_P2_EMPTY_EVIDENCE)
+        self.assertEqual(r["highest_severity"], "P0")
+        self.assertFalse(r["auto_merge_allowed"])
+
+    def test_findings_p2_empty_suggested_fix_fails_closed(self):
+        r = parser.parse(FINDINGS_P2_EMPTY_SUGGESTED_FIX)
+        self.assertEqual(r["highest_severity"], "P0")
+        self.assertFalse(r["auto_merge_allowed"])
+
+    def test_findings_p2_extra_key_fails_closed(self):
+        # Schema drift: an unexpected key beside the canonical four must
+        # short-circuit to fail-closed even though severity/required fields
+        # are individually fine.
+        r = parser.parse(FINDINGS_P2_EXTRA_KEY)
+        self.assertEqual(r["highest_severity"], "P0")
+        self.assertFalse(r["auto_merge_allowed"])
 
 
 if __name__ == "__main__":

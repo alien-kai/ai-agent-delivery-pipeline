@@ -49,26 +49,45 @@ def _to_bool(v: Any) -> bool:
     return False
 
 
+_FINDING_REQUIRED_FIELDS = ("severity", "title", "evidence", "suggested_fix")
+_FINDING_ALLOWED_FIELDS = frozenset(_FINDING_REQUIRED_FIELDS)
+
+
 def _max_severity_from_findings(findings) -> tuple[str, bool]:
     """Scan a findings list and report ``(max_blocking_severity, malformed)``.
 
-    Only dict entries with a string ``severity`` in the recognised set
-    ``{P0, P1, P2, Info}`` are accepted. ``Info`` is non-elevating but
-    valid. Anything else (non-dict entry, missing severity, non-string
-    severity, or an unknown severity label) counts as schema drift; the
-    caller is expected to fail closed by inspecting the ``malformed`` flag.
+    Each entry must strictly match the review-result schema: it must be a
+    dict whose keys are exactly the recognised set
+    ``{severity, title, evidence, suggested_fix}``, every required field
+    must be a non-empty string, and ``severity`` must be one of
+    ``{P0, P1, P2, Info}``. ``Info`` is non-elevating but valid.
+    Anything that violates the schema — non-dict entry, missing /
+    superfluous keys, non-string fields, blank strings, or an unknown
+    severity label — short-circuits with ``malformed=True`` so the caller
+    can fail closed.
     """
     if not isinstance(findings, list):
         return ("none", False)
-    valid = ("P0", "P1", "P2", "Info")
+    valid_severities = ("P0", "P1", "P2", "Info")
     best = "none"
     best_rank = 0
     for item in findings:
         if not isinstance(item, dict):
             return ("P0", True)
-        sev = item.get("severity")
-        if not isinstance(sev, str) or sev not in valid:
+        # Reject unexpected keys outright (schema drift).
+        if set(item.keys()) - _FINDING_ALLOWED_FIELDS:
             return ("P0", True)
+        # All required keys must be present.
+        if not all(key in item for key in _FINDING_REQUIRED_FIELDS):
+            return ("P0", True)
+        sev = item.get("severity")
+        if not isinstance(sev, str) or sev not in valid_severities:
+            return ("P0", True)
+        # title / evidence / suggested_fix must be non-empty strings.
+        for key in ("title", "evidence", "suggested_fix"):
+            value = item.get(key)
+            if not isinstance(value, str) or not value.strip():
+                return ("P0", True)
         if sev == "Info":
             continue
         rank = _SEVERITY_RANK[sev]
