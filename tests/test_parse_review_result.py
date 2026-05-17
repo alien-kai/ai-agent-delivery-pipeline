@@ -684,6 +684,25 @@ class ParseReviewTests(unittest.TestCase):
         self.assertEqual(r["highest_severity"], "P0")
         self.assertFalse(r["auto_merge_allowed"])
 
+    def test_findings_empty_then_unindented_list_fails_closed(self):
+        # Attack variant: `findings: []` followed by an UNINDENTED list
+        # at root level. `_read_map` would otherwise return early on the
+        # `- ` marker and leave the list unconsumed, hiding the P0.
+        text = (
+            'task_id: "test-trailing-list"\n'
+            'risk_level: "green"\n'
+            'auto_merge_allowed: true\n'
+            'highest_severity: "none"\n'
+            'findings: []\n'
+            '- severity: "P0"\n'
+            '  title: "hidden via trailing list"\n'
+            '  evidence: "evidence"\n'
+            '  suggested_fix: "fix"\n'
+        )
+        r = parser.parse(text)
+        self.assertEqual(r["highest_severity"], "P0")
+        self.assertFalse(r["auto_merge_allowed"])
+
 
 if __name__ == "__main__":
     unittest.main()

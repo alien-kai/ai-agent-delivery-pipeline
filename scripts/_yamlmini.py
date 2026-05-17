@@ -21,7 +21,21 @@ def parse_yaml(text: str) -> Any:
     if lines and lines[0].startswith("﻿"):
         lines[0] = lines[0][1:]
     pos = [0]
-    return _read_map(lines, pos, 0)
+    result = _read_map(lines, pos, 0)
+    # The top-level document must be fully consumed. `_read_map` returns
+    # when it encounters a list marker (`- `) at its own indent so the
+    # caller can resume; at top level there is no caller, so a trailing
+    # `- ...` block — or any other unconsumed nonblank line — is schema
+    # drift that would otherwise hide content from the gate.
+    while pos[0] < len(lines):
+        ln = lines[pos[0]]
+        if _blank_or_comment(ln):
+            pos[0] += 1
+            continue
+        raise ValueError(
+            f"unexpected trailing content at line {pos[0] + 1}: {ln.strip()!r}"
+        )
+    return result
 
 
 def _read_map(lines, pos, base_indent):

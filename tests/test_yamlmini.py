@@ -168,6 +168,39 @@ class MalformedSyntaxTests(unittest.TestCase):
         result = parser.parse_yaml(text)
         self.assertEqual(result["other_key"], "x")
 
+    def test_trailing_top_level_list_raises(self):
+        # Attack: `findings: []` followed by an unindented list block
+        # would have made `_read_map` return early at the `- ` marker,
+        # leaving the hidden list unconsumed by the top-level call.
+        text = (
+            "findings: []\n"
+            "- severity: P0\n"
+            "  title: hidden\n"
+        )
+        with self.assertRaises(ValueError):
+            parser.parse_yaml(text)
+
+    def test_trailing_text_after_mapping_raises(self):
+        text = (
+            "key1: a\n"
+            "key2: b\n"
+            "- bareword_after_close\n"
+        )
+        with self.assertRaises(ValueError):
+            parser.parse_yaml(text)
+
+    def test_trailing_blanks_and_comments_allowed(self):
+        # Blank lines and comments after the last value must NOT raise.
+        text = (
+            "key1: a\n"
+            "key2: b\n"
+            "\n"
+            "# trailing comment\n"
+            "\n"
+        )
+        result = parser.parse_yaml(text)
+        self.assertEqual(result, {"key1": "a", "key2": "b"})
+
 
 if __name__ == "__main__":
     unittest.main()
