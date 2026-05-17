@@ -55,6 +55,10 @@ DEFAULT_MAX_ITERATIONS = 2
 # on green specs.
 MEANINGLESS_GREEN_PATTERNS = frozenset({"*", "**", "**/*", ".", "./", "/"})
 
+# Sentinel for `_check_string_list` so it can tell a genuinely absent key
+# from a key that is present with `null` / a bare value.
+_MISSING = object()
+
 
 def _present(value) -> bool:
     if value is None:
@@ -67,13 +71,13 @@ def _present(value) -> bool:
 def _check_string_list(value, field_name: str, errors: list) -> None:
     """Validate that ``value`` is a non-empty list of non-empty strings.
 
-    A missing field (``value is None``) is tolerated here — required-field
-    presence checks live elsewhere. A field that is *present* must be a
-    list with at least one item, and every item must be a non-empty
-    string. An explicitly empty list is rejected so a green task cannot
-    declare an empty scope guard and still validate.
+    Callers must pass ``_MISSING`` when the key is genuinely absent —
+    that is the only case this helper tolerates. Any other value,
+    including ``None`` from an explicit YAML ``null`` or a bare key,
+    counts as a present field that must satisfy the non-empty-list
+    contract.
     """
-    if value is None:
+    if value is _MISSING:
         return
     if not isinstance(value, list):
         errors.append(f"{field_name} must be a list of strings")
@@ -175,12 +179,18 @@ def validate(path: Path, strict: bool = False) -> dict:
         )
 
     _check_string_list(
-        spec.get("allowed_file_patterns"), "allowed_file_patterns", errors
+        spec.get("allowed_file_patterns", _MISSING),
+        "allowed_file_patterns",
+        errors,
     )
     _check_string_list(
-        spec.get("forbidden_file_patterns"), "forbidden_file_patterns", errors
+        spec.get("forbidden_file_patterns", _MISSING),
+        "forbidden_file_patterns",
+        errors,
     )
-    _check_string_list(spec.get("risk_reasoning"), "risk_reasoning", errors)
+    _check_string_list(
+        spec.get("risk_reasoning", _MISSING), "risk_reasoning", errors
+    )
 
     # Green tasks must not declare globally-permissive allowed patterns;
     # those defeat the auto-merge scope guard.

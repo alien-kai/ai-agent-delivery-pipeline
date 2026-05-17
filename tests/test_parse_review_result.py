@@ -264,6 +264,30 @@ findings:
 summary: "P2 finding with an extra schema-drift key."
 """
 
+FINDINGS_EXPLICIT_NULL = """task_id: "test-findings-null"
+risk_level: "green"
+auto_merge_allowed: true
+highest_severity: "none"
+findings: null
+summary: "Explicit null findings."
+"""
+
+FINDINGS_BARE_KEY = """task_id: "test-findings-bare"
+risk_level: "green"
+auto_merge_allowed: true
+highest_severity: "none"
+findings:
+summary: "Bare findings key with no value."
+"""
+
+FINDINGS_EMPTY_DICT = """task_id: "test-findings-dict"
+risk_level: "green"
+auto_merge_allowed: true
+highest_severity: "none"
+findings: {}
+summary: "Findings as empty dict."
+"""
+
 P2_GREEN_ALLOWED_TRUE = """task_id: "test-11"
 risk_level: "green"
 auto_merge_allowed: true
@@ -540,6 +564,25 @@ class ParseReviewTests(unittest.TestCase):
         # short-circuit to fail-closed even though severity/required fields
         # are individually fine.
         r = parser.parse(FINDINGS_P2_EXTRA_KEY)
+        self.assertEqual(r["highest_severity"], "P0")
+        self.assertFalse(r["auto_merge_allowed"])
+
+    def test_findings_explicit_null_fails_closed(self):
+        # A present key with explicit YAML `null` is not the same as a
+        # missing key; the helper must fail closed.
+        r = parser.parse(FINDINGS_EXPLICIT_NULL)
+        self.assertEqual(r["highest_severity"], "P0")
+        self.assertFalse(r["auto_merge_allowed"])
+
+    def test_findings_bare_key_fails_closed(self):
+        # A bare `findings:` (no value) parses to None and must also fail
+        # closed, the same as explicit null.
+        r = parser.parse(FINDINGS_BARE_KEY)
+        self.assertEqual(r["highest_severity"], "P0")
+        self.assertFalse(r["auto_merge_allowed"])
+
+    def test_findings_empty_dict_fails_closed(self):
+        r = parser.parse(FINDINGS_EMPTY_DICT)
         self.assertEqual(r["highest_severity"], "P0")
         self.assertFalse(r["auto_merge_allowed"])
 

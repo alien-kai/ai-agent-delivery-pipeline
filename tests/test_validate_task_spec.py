@@ -484,6 +484,134 @@ class ValidateTaskSpecTests(unittest.TestCase):
         finally:
             path.unlink()
 
+    def test_green_allowed_file_patterns_explicit_null_invalid_default(self):
+        # An explicit YAML `null` for an allowlist is schema drift, not
+        # "missing": the validator must treat it as a present-but-invalid
+        # field and fail in default mode.
+        base = (FIXTURES / "valid-green.yaml").read_text(encoding="utf-8")
+        broken = base.replace(
+            'allowed_file_patterns:\n  - "README.md"',
+            'allowed_file_patterns: null',
+        )
+        path = _tmpfile(broken)
+        try:
+            result = validator.validate(path)
+            self.assertFalse(result["ok"])
+            self.assertTrue(
+                any("allowed_file_patterns" in e for e in result["errors"]),
+                msg=result["errors"],
+            )
+        finally:
+            path.unlink()
+
+    def test_green_allowed_file_patterns_explicit_null_invalid_strict(self):
+        base = (FIXTURES / "valid-green.yaml").read_text(encoding="utf-8")
+        broken = base.replace(
+            'allowed_file_patterns:\n  - "README.md"',
+            'allowed_file_patterns: null',
+        )
+        path = _tmpfile(broken)
+        try:
+            result = validator.validate(path, strict=True)
+            self.assertFalse(result["ok"])
+            self.assertTrue(
+                any("allowed_file_patterns" in e for e in result["errors"]),
+                msg=result["errors"],
+            )
+        finally:
+            path.unlink()
+
+    def test_green_bare_allowed_file_patterns_invalid(self):
+        # A bare `allowed_file_patterns:` with no value also parses to
+        # None and must fail in default mode.
+        base = (FIXTURES / "valid-green.yaml").read_text(encoding="utf-8")
+        broken = base.replace(
+            'allowed_file_patterns:\n  - "README.md"',
+            'allowed_file_patterns:',
+        )
+        path = _tmpfile(broken)
+        try:
+            result = validator.validate(path)
+            self.assertFalse(result["ok"])
+            self.assertTrue(
+                any("allowed_file_patterns" in e for e in result["errors"]),
+                msg=result["errors"],
+            )
+        finally:
+            path.unlink()
+
+    def test_forbidden_file_patterns_explicit_null_invalid(self):
+        base = (FIXTURES / "valid-green.yaml").read_text(encoding="utf-8")
+        broken = base.replace(
+            'forbidden_file_patterns:\n  - "src/**"\n  - ".env*"',
+            'forbidden_file_patterns: null',
+        )
+        path = _tmpfile(broken)
+        try:
+            result = validator.validate(path)
+            self.assertFalse(result["ok"])
+            self.assertTrue(
+                any("forbidden_file_patterns" in e for e in result["errors"]),
+                msg=result["errors"],
+            )
+        finally:
+            path.unlink()
+
+    def test_bare_forbidden_file_patterns_invalid(self):
+        base = (FIXTURES / "valid-green.yaml").read_text(encoding="utf-8")
+        broken = base.replace(
+            'forbidden_file_patterns:\n  - "src/**"\n  - ".env*"',
+            'forbidden_file_patterns:',
+        )
+        path = _tmpfile(broken)
+        try:
+            result = validator.validate(path)
+            self.assertFalse(result["ok"])
+            self.assertTrue(
+                any("forbidden_file_patterns" in e for e in result["errors"]),
+                msg=result["errors"],
+            )
+        finally:
+            path.unlink()
+
+    def test_risk_reasoning_explicit_null_invalid(self):
+        base = (FIXTURES / "valid-green.yaml").read_text(encoding="utf-8")
+        broken = base.replace(
+            'risk_reasoning:\n'
+            '  - "Documentation-only update with narrow scope."\n'
+            '  - "No auth, payment, privacy, dependency, or schema impact."',
+            'risk_reasoning: null',
+        )
+        path = _tmpfile(broken)
+        try:
+            result = validator.validate(path)
+            self.assertFalse(result["ok"])
+            self.assertTrue(
+                any("risk_reasoning" in e for e in result["errors"]),
+                msg=result["errors"],
+            )
+        finally:
+            path.unlink()
+
+    def test_bare_risk_reasoning_invalid(self):
+        base = (FIXTURES / "valid-green.yaml").read_text(encoding="utf-8")
+        broken = base.replace(
+            'risk_reasoning:\n'
+            '  - "Documentation-only update with narrow scope."\n'
+            '  - "No auth, payment, privacy, dependency, or schema impact."',
+            'risk_reasoning:',
+        )
+        path = _tmpfile(broken)
+        try:
+            result = validator.validate(path)
+            self.assertFalse(result["ok"])
+            self.assertTrue(
+                any("risk_reasoning" in e for e in result["errors"]),
+                msg=result["errors"],
+            )
+        finally:
+            path.unlink()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -115,12 +115,19 @@ def parse(text: str) -> dict:
         # Conservative default: assume the worst when the reviewer omitted it.
         top_severity = "P0"
 
-    raw_findings = parsed.get("findings")
-    # Fail closed on a malformed `findings` shape: present but not a list.
-    # `None`/absent is fine (no findings); a non-list scalar or dict is
-    # suspicious enough to force the most-conservative effective severity.
-    findings_top_malformed = raw_findings is not None and not isinstance(raw_findings, list)
-    findings = raw_findings if isinstance(raw_findings, list) else []
+    # Distinguish a missing `findings` key from an explicit `null` / bare
+    # key. Only true absence counts as "no findings"; any present non-list
+    # value (including YAML `null`, a bare key, a scalar, or a mapping)
+    # is schema drift and must fail closed.
+    if "findings" not in parsed:
+        findings_top_malformed = False
+        findings = []
+    elif isinstance(parsed["findings"], list):
+        findings_top_malformed = False
+        findings = parsed["findings"]
+    else:
+        findings_top_malformed = True
+        findings = []
 
     # Effective severity is the max of the top-level field and any blocking
     # severity in the findings list. This closes the bypass where a reviewer
