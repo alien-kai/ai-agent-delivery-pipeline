@@ -654,6 +654,126 @@ class ValidateTaskSpecTests(unittest.TestCase):
         finally:
             path.unlink()
 
+    def test_green_max_iterations_null_invalid(self):
+        base = (FIXTURES / "valid-green.yaml").read_text(encoding="utf-8")
+        broken = base.replace("max_iterations: 2", "max_iterations: null")
+        path = _tmpfile(broken)
+        try:
+            result = validator.validate(path)
+            self.assertFalse(result["ok"])
+            self.assertTrue(
+                any("max_iterations" in e for e in result["errors"]),
+                msg=result["errors"],
+            )
+        finally:
+            path.unlink()
+
+    def test_green_bare_max_iterations_invalid(self):
+        base = (FIXTURES / "valid-green.yaml").read_text(encoding="utf-8")
+        broken = base.replace("max_iterations: 2", "max_iterations:")
+        path = _tmpfile(broken)
+        try:
+            result = validator.validate(path)
+            self.assertFalse(result["ok"])
+            self.assertTrue(
+                any("max_iterations" in e for e in result["errors"]),
+                msg=result["errors"],
+            )
+        finally:
+            path.unlink()
+
+    def test_green_allow_auto_fix_null_invalid(self):
+        base = (FIXTURES / "valid-green.yaml").read_text(encoding="utf-8")
+        broken = base.replace("allow_auto_fix: true", "allow_auto_fix: null")
+        path = _tmpfile(broken)
+        try:
+            result = validator.validate(path)
+            self.assertFalse(result["ok"])
+            self.assertTrue(
+                any("allow_auto_fix" in e for e in result["errors"]),
+                msg=result["errors"],
+            )
+        finally:
+            path.unlink()
+
+    def test_green_bare_allow_auto_fix_invalid(self):
+        base = (FIXTURES / "valid-green.yaml").read_text(encoding="utf-8")
+        broken = base.replace("allow_auto_fix: true", "allow_auto_fix:")
+        path = _tmpfile(broken)
+        try:
+            result = validator.validate(path)
+            self.assertFalse(result["ok"])
+            self.assertTrue(
+                any("allow_auto_fix" in e for e in result["errors"]),
+                msg=result["errors"],
+            )
+        finally:
+            path.unlink()
+
+    def test_green_missing_max_and_allow_uses_defaults(self):
+        # A green spec that omits both optional fields is still valid and
+        # the summary applies the documented defaults (2 / true).
+        base = (FIXTURES / "valid-green.yaml").read_text(encoding="utf-8")
+        stripped = "\n".join(
+            line for line in base.splitlines()
+            if not line.startswith("max_iterations:")
+            and not line.startswith("allow_auto_fix:")
+        )
+        path = _tmpfile(stripped)
+        try:
+            result = validator.validate(path)
+            self.assertTrue(result["ok"], msg=result["errors"])
+            self.assertEqual(result["summary"]["max_iterations"], 2)
+            self.assertIs(result["summary"]["allow_auto_fix"], True)
+        finally:
+            path.unlink()
+
+    def test_red_missing_max_and_allow_uses_defaults(self):
+        # A red spec that omits both still validates; summary normalizes
+        # to the red contract (0 / false).
+        base = (FIXTURES / "valid-red.yaml").read_text(encoding="utf-8")
+        stripped = "\n".join(
+            line for line in base.splitlines()
+            if not line.startswith("max_iterations:")
+            and not line.startswith("allow_auto_fix:")
+        )
+        path = _tmpfile(stripped)
+        try:
+            result = validator.validate(path)
+            self.assertTrue(result["ok"], msg=result["errors"])
+            self.assertEqual(result["summary"]["max_iterations"], 0)
+            self.assertIs(result["summary"]["allow_auto_fix"], False)
+        finally:
+            path.unlink()
+
+    def test_red_max_iterations_null_invalid(self):
+        base = (FIXTURES / "valid-red.yaml").read_text(encoding="utf-8")
+        broken = base.replace("max_iterations: 0", "max_iterations: null")
+        path = _tmpfile(broken)
+        try:
+            result = validator.validate(path)
+            self.assertFalse(result["ok"])
+            self.assertTrue(
+                any("max_iterations" in e for e in result["errors"]),
+                msg=result["errors"],
+            )
+        finally:
+            path.unlink()
+
+    def test_red_allow_auto_fix_null_invalid(self):
+        base = (FIXTURES / "valid-red.yaml").read_text(encoding="utf-8")
+        broken = base.replace("allow_auto_fix: false", "allow_auto_fix: null")
+        path = _tmpfile(broken)
+        try:
+            result = validator.validate(path)
+            self.assertFalse(result["ok"])
+            self.assertTrue(
+                any("allow_auto_fix" in e for e in result["errors"]),
+                msg=result["errors"],
+            )
+        finally:
+            path.unlink()
+
 
 if __name__ == "__main__":
     unittest.main()

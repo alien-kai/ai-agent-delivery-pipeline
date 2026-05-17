@@ -359,6 +359,105 @@ class GetTaskMaxIterationsTests(unittest.TestCase):
         finally:
             path.unlink()
 
+    def test_green_max_iterations_null_fails_closed(self):
+        text = "risk_level: green\nmax_iterations: null\n"
+        result = max_iter_mod.extract(text)
+        self.assertIsNone(result["max_iterations"])
+        self.assertFalse(result["allow_auto_fix"])
+        self.assertTrue(
+            any("max_iterations" in e for e in result["errors"]),
+            msg=result["errors"],
+        )
+
+    def test_green_bare_max_iterations_fails_closed(self):
+        text = "risk_level: green\nmax_iterations:\n"
+        result = max_iter_mod.extract(text)
+        self.assertIsNone(result["max_iterations"])
+        self.assertTrue(result["errors"])
+
+    def test_green_allow_auto_fix_null_fails_closed(self):
+        text = "risk_level: green\nallow_auto_fix: null\n"
+        result = max_iter_mod.extract(text)
+        self.assertFalse(result["allow_auto_fix"])
+        self.assertTrue(
+            any("allow_auto_fix" in e for e in result["errors"]),
+            msg=result["errors"],
+        )
+
+    def test_green_bare_allow_auto_fix_fails_closed(self):
+        text = "risk_level: green\nallow_auto_fix:\n"
+        result = max_iter_mod.extract(text)
+        self.assertFalse(result["allow_auto_fix"])
+        self.assertTrue(result["errors"])
+
+    def test_green_missing_max_and_allow_uses_defaults(self):
+        # A green spec that omits both fields is still valid and emits
+        # the documented defaults.
+        text = "risk_level: green\n"
+        result = max_iter_mod.extract(text)
+        self.assertEqual(result["max_iterations"], 2)
+        self.assertTrue(result["allow_auto_fix"])
+        self.assertFalse(result["errors"])
+
+    def test_red_missing_max_and_allow_uses_defaults(self):
+        text = "risk_level: red\n"
+        result = max_iter_mod.extract(text)
+        self.assertEqual(result["max_iterations"], 0)
+        self.assertFalse(result["allow_auto_fix"])
+        self.assertFalse(result["errors"])
+
+    def test_red_max_iterations_null_fails_closed(self):
+        text = "risk_level: red\nmax_iterations: null\n"
+        result = max_iter_mod.extract(text)
+        self.assertIsNone(result["max_iterations"])
+        self.assertTrue(result["errors"])
+
+    def test_red_allow_auto_fix_null_fails_closed(self):
+        text = "risk_level: red\nallow_auto_fix: null\n"
+        result = max_iter_mod.extract(text)
+        self.assertFalse(result["allow_auto_fix"])
+        self.assertTrue(result["errors"])
+
+    def test_risk_level_null_fails_closed(self):
+        # `risk_level: null` is structurally present but parses to None,
+        # which is not in VALID_RISK — must fail closed.
+        text = "risk_level: null\nmax_iterations: 2\n"
+        result = max_iter_mod.extract(text)
+        self.assertIsNone(result["max_iterations"])
+        self.assertFalse(result["allow_auto_fix"])
+        self.assertTrue(result["errors"])
+
+    def test_bare_risk_level_fails_closed(self):
+        text = "risk_level:\nmax_iterations: 2\n"
+        result = max_iter_mod.extract(text)
+        self.assertIsNone(result["max_iterations"])
+        self.assertFalse(result["allow_auto_fix"])
+        self.assertTrue(result["errors"])
+
+    def test_cli_green_max_iterations_null_exits_nonzero(self):
+        path = _tmp("risk_level: green\nmax_iterations: null\n")
+        try:
+            proc = subprocess.run(
+                [sys.executable, str(MAX_ITER_SCRIPT), str(path)],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(proc.returncode, 1)
+            self.assertIn("max_iterations", proc.stderr)
+        finally:
+            path.unlink()
+
+    def test_cli_green_allow_auto_fix_null_exits_nonzero(self):
+        path = _tmp("risk_level: green\nallow_auto_fix: null\n")
+        try:
+            proc = subprocess.run(
+                [sys.executable, str(MAX_ITER_SCRIPT), str(path)],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(proc.returncode, 1)
+            self.assertIn("allow_auto_fix", proc.stderr)
+        finally:
+            path.unlink()
+
 
 if __name__ == "__main__":
     unittest.main()
