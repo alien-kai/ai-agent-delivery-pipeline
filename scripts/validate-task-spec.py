@@ -147,23 +147,46 @@ def validate(path: Path, strict: bool = False) -> dict:
     if expected_merge is not None and merge != expected_merge:
         errors.append(f"{risk} tasks must use merge_policy: {expected_merge}")
 
-    allow_auto_fix = spec.get("allow_auto_fix")
-    if allow_auto_fix is not None and not isinstance(allow_auto_fix, bool):
-        errors.append(
-            f"allow_auto_fix must be boolean, got {type(allow_auto_fix).__name__}"
-        )
+    # Distinguish a missing key from an explicit `null` / bare key. Only
+    # true absence applies the legacy default; an explicit null is schema
+    # drift and must fail closed.
+    if "allow_auto_fix" in spec:
+        raw_allow_auto_fix = spec["allow_auto_fix"]
+        if raw_allow_auto_fix is None:
+            errors.append("allow_auto_fix must be boolean, got null")
+            allow_auto_fix = None
+        elif not isinstance(raw_allow_auto_fix, bool):
+            errors.append(
+                f"allow_auto_fix must be boolean, got {type(raw_allow_auto_fix).__name__}"
+            )
+            allow_auto_fix = None
+        else:
+            allow_auto_fix = raw_allow_auto_fix
+    else:
+        allow_auto_fix = None
 
     if risk == "red" and allow_auto_fix is True:
         errors.append("red tasks must set allow_auto_fix: false")
 
-    max_iter = spec.get("max_iterations")
-    if max_iter is not None:
-        if isinstance(max_iter, bool) or not isinstance(max_iter, int):
+    if "max_iterations" in spec:
+        raw_max_iter = spec["max_iterations"]
+        if raw_max_iter is None:
+            errors.append("max_iterations must be an integer, got null")
+            max_iter = None
+        elif isinstance(raw_max_iter, bool) or not isinstance(raw_max_iter, int):
             errors.append(
-                f"max_iterations must be an integer, got {type(max_iter).__name__}"
+                f"max_iterations must be an integer, got {type(raw_max_iter).__name__}"
             )
-        elif not 0 <= max_iter <= 5:
-            errors.append(f"max_iterations must be between 0 and 5, got {max_iter}")
+            max_iter = None
+        elif not 0 <= raw_max_iter <= 5:
+            errors.append(
+                f"max_iterations must be between 0 and 5, got {raw_max_iter}"
+            )
+            max_iter = None
+        else:
+            max_iter = raw_max_iter
+    else:
+        max_iter = None
 
     # Red tasks never enter the AI fix loop, so any nonzero max_iterations
     # value is contradictory. Reject it so the planner can't ship a spec

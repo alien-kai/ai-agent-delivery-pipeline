@@ -61,38 +61,49 @@ def extract(text: str) -> dict:
 
     errors: list[str] = []
 
-    raw_max = spec.get("max_iterations")
     max_iter: int | None = None
-
-    if raw_max is None:
+    if "max_iterations" not in spec:
+        # Truly absent — apply the legacy default.
         max_iter = 0 if risk == "red" else DEFAULT_MAX_ITERATIONS
-    elif isinstance(raw_max, bool) or not isinstance(raw_max, int):
-        errors.append(
-            f"max_iterations must be an integer, got {type(raw_max).__name__}"
-        )
-    elif not 0 <= raw_max <= 5:
-        errors.append(f"max_iterations must be between 0 and 5, got {raw_max}")
-    elif risk == "red" and raw_max != 0:
-        errors.append(
-            f"red tasks must have max_iterations: 0, got {raw_max}"
-        )
     else:
-        max_iter = raw_max
-
-    raw_allow = spec.get("allow_auto_fix")
-    if raw_allow is None:
-        allow = risk != "red"
-    elif isinstance(raw_allow, bool):
-        if risk == "red" and raw_allow is True:
-            errors.append("red tasks must have allow_auto_fix: false")
-            allow = False
+        # Present but possibly malformed. An explicit `null` / bare key
+        # parses to Python `None`; we treat that as schema drift, not
+        # "use the default", so a malformed planner output cannot quietly
+        # pick up the auto-fix budget.
+        raw_max = spec["max_iterations"]
+        if raw_max is None:
+            errors.append("max_iterations must be an integer, got null")
+        elif isinstance(raw_max, bool) or not isinstance(raw_max, int):
+            errors.append(
+                f"max_iterations must be an integer, got {type(raw_max).__name__}"
+            )
+        elif not 0 <= raw_max <= 5:
+            errors.append(f"max_iterations must be between 0 and 5, got {raw_max}")
+        elif risk == "red" and raw_max != 0:
+            errors.append(
+                f"red tasks must have max_iterations: 0, got {raw_max}"
+            )
         else:
-            allow = raw_allow
+            max_iter = raw_max
+
+    if "allow_auto_fix" not in spec:
+        allow = risk != "red"
     else:
-        errors.append(
-            f"allow_auto_fix must be a boolean, got {type(raw_allow).__name__}"
-        )
-        allow = False
+        raw_allow = spec["allow_auto_fix"]
+        if raw_allow is None:
+            errors.append("allow_auto_fix must be a boolean, got null")
+            allow = False
+        elif isinstance(raw_allow, bool):
+            if risk == "red" and raw_allow is True:
+                errors.append("red tasks must have allow_auto_fix: false")
+                allow = False
+            else:
+                allow = raw_allow
+        else:
+            errors.append(
+                f"allow_auto_fix must be a boolean, got {type(raw_allow).__name__}"
+            )
+            allow = False
 
     # Any helper error invalidates the budget value. A nonzero red value
     # already left max_iter=None above; force the same for allow-side errors
