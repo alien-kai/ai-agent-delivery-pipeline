@@ -77,17 +77,31 @@ def _consume_scalar_continuation(lines, pos, base_indent):
     long as each continuation line is indented deeper than the container.
     We don't preserve the wrapped text — only advance ``pos`` past it so
     the surrounding reader's next iteration starts at the expected indent.
-    Any line at indent <= ``base_indent`` ends the continuation.
+
+    Important: a deeper-indented line that *looks structured* (a list
+    item ``- ...`` or a mapping entry ``key: value``) is rejected as
+    schema drift. Allowing it would let a malformed spec smuggle hidden
+    findings or mapping entries past the gate after an inline scalar
+    value such as ``findings: []``.
     """
     while pos[0] < len(lines):
         ln = lines[pos[0]]
         if _blank_or_comment(ln):
             pos[0] += 1
             continue
-        if _indent(ln) > base_indent:
-            pos[0] += 1
-            continue
-        break
+        ind = _indent(ln)
+        if ind <= base_indent:
+            break
+        stripped = ln[ind:]
+        if stripped.startswith("- ") or stripped == "-":
+            raise ValueError(
+                f"unexpected list item at line {pos[0] + 1}: {ln.strip()!r}"
+            )
+        if _KEY_RE.match(stripped):
+            raise ValueError(
+                f"unexpected mapping entry at line {pos[0] + 1}: {ln.strip()!r}"
+            )
+        pos[0] += 1
 
 
 def _read_nested(lines, pos, min_indent):

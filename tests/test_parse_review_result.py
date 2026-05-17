@@ -664,6 +664,26 @@ class ParseReviewTests(unittest.TestCase):
         self.assertEqual(r["highest_severity"], "P0")
         self.assertFalse(r["auto_merge_allowed"])
 
+    def test_findings_empty_then_indented_list_fails_closed(self):
+        # Attack: `findings: []` followed by an indented list of P0
+        # entries. The parser must not swallow the indented list as
+        # scalar continuation and silently report no findings.
+        text = (
+            'task_id: "test-hidden-p0"\n'
+            'risk_level: "green"\n'
+            'auto_merge_allowed: true\n'
+            'highest_severity: "none"\n'
+            'findings: []\n'
+            '  - severity: "P0"\n'
+            '    title: "hidden P0"\n'
+            '    evidence: "evidence"\n'
+            '    suggested_fix: "fix"\n'
+            'summary: "Hidden P0 attempt."\n'
+        )
+        r = parser.parse(text)
+        self.assertEqual(r["highest_severity"], "P0")
+        self.assertFalse(r["auto_merge_allowed"])
+
 
 if __name__ == "__main__":
     unittest.main()

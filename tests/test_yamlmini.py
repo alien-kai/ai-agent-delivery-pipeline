@@ -136,6 +136,38 @@ class MalformedSyntaxTests(unittest.TestCase):
         self.assertEqual(result["risk_level"], "green")
         self.assertIn("multi line", result["objective"])
 
+    def test_indented_list_item_after_scalar_value_raises(self):
+        # `findings: []` followed by an indented `- severity: P0` must not
+        # be silently treated as plain-scalar continuation. It is schema
+        # drift that, if accepted, would hide a P0 finding from the gate.
+        text = (
+            "findings: []\n"
+            "  - severity: P0\n"
+            "    title: hidden\n"
+        )
+        with self.assertRaises(ValueError):
+            parser.parse_yaml(text)
+
+    def test_indented_mapping_entry_after_scalar_value_raises(self):
+        text = (
+            "key: value\n"
+            "   nested: x\n"
+        )
+        with self.assertRaises(ValueError):
+            parser.parse_yaml(text)
+
+    def test_plain_text_continuation_with_no_colon_or_dash_allowed(self):
+        # Wrapped plain-scalar text without colon or dash should still be
+        # accepted so legitimate human-readable specs keep parsing.
+        text = (
+            "summary: first line of text\n"
+            "  continues with more plain words\n"
+            "  and yet more words here\n"
+            "other_key: x\n"
+        )
+        result = parser.parse_yaml(text)
+        self.assertEqual(result["other_key"], "x")
+
 
 if __name__ == "__main__":
     unittest.main()
