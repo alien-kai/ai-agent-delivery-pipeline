@@ -308,6 +308,57 @@ class GetTaskMaxIterationsTests(unittest.TestCase):
         finally:
             path.unlink()
 
+    def test_duplicate_risk_level_fails_closed(self):
+        # A duplicate `risk_level` key is schema drift — the parser raises,
+        # the helper's try/except catches it, and the resulting spec={}
+        # falls through to the missing-risk-level fail-closed branch.
+        text = (
+            "risk_level: red\n"
+            "risk_level: green\n"
+            "allow_auto_fix: true\n"
+            "max_iterations: 2\n"
+        )
+        result = max_iter_mod.extract(text)
+        self.assertIsNone(result["max_iterations"])
+        self.assertTrue(result["errors"])
+        self.assertFalse(result["allow_auto_fix"])
+
+    def test_duplicate_max_iterations_fails_closed(self):
+        text = (
+            "risk_level: green\n"
+            "max_iterations: 0\n"
+            "max_iterations: 2\n"
+        )
+        result = max_iter_mod.extract(text)
+        self.assertIsNone(result["max_iterations"])
+        self.assertTrue(result["errors"])
+
+    def test_duplicate_allow_auto_fix_fails_closed(self):
+        text = (
+            "risk_level: green\n"
+            "allow_auto_fix: false\n"
+            "allow_auto_fix: true\n"
+        )
+        result = max_iter_mod.extract(text)
+        self.assertTrue(result["errors"])
+        self.assertFalse(result["allow_auto_fix"])
+
+    def test_cli_duplicate_risk_level_exits_nonzero(self):
+        path = _tmp(
+            "risk_level: red\n"
+            "risk_level: green\n"
+            "allow_auto_fix: true\n"
+            "max_iterations: 2\n"
+        )
+        try:
+            proc = subprocess.run(
+                [sys.executable, str(MAX_ITER_SCRIPT), str(path)],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(proc.returncode, 1)
+        finally:
+            path.unlink()
+
 
 if __name__ == "__main__":
     unittest.main()

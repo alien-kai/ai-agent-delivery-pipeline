@@ -612,6 +612,48 @@ class ValidateTaskSpecTests(unittest.TestCase):
         finally:
             path.unlink()
 
+    def test_duplicate_risk_level_invalid(self):
+        # A spec with a duplicate top-level `risk_level` is malformed; the
+        # parser must reject it and the validator must surface a failure.
+        base = (FIXTURES / "valid-green.yaml").read_text(encoding="utf-8")
+        broken = base.replace(
+            'risk_level: "green"',
+            'risk_level: "green"\nrisk_level: "red"',
+        )
+        path = _tmpfile(broken)
+        try:
+            result = validator.validate(path)
+            self.assertFalse(result["ok"])
+        finally:
+            path.unlink()
+
+    def test_duplicate_merge_policy_invalid(self):
+        base = (FIXTURES / "valid-green.yaml").read_text(encoding="utf-8")
+        broken = base.replace(
+            'merge_policy: "auto_merge_if_green"',
+            'merge_policy: "auto_merge_if_green"\nmerge_policy: "draft_only"',
+        )
+        path = _tmpfile(broken)
+        try:
+            result = validator.validate(path)
+            self.assertFalse(result["ok"])
+        finally:
+            path.unlink()
+
+    def test_duplicate_allowed_file_patterns_invalid(self):
+        base = (FIXTURES / "valid-green.yaml").read_text(encoding="utf-8")
+        broken = base.replace(
+            'allowed_file_patterns:\n  - "README.md"\n',
+            'allowed_file_patterns:\n  - "docs/**"\n'
+            'allowed_file_patterns:\n  - "src/**"\n',
+        )
+        path = _tmpfile(broken)
+        try:
+            result = validator.validate(path)
+            self.assertFalse(result["ok"])
+        finally:
+            path.unlink()
+
 
 if __name__ == "__main__":
     unittest.main()

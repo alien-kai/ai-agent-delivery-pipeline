@@ -48,6 +48,11 @@ def _read_map(lines, pos, base_indent):
         key = m.group(1)
         rest = _strip_inline_comment(m.group(2)).strip()
         pos[0] = i + 1
+        if key in out:
+            # Duplicate keys in a mapping are schema drift. Reject loudly
+            # so downstream `try / except` paths can fail closed instead
+            # of inheriting the parser's last-value-wins semantics.
+            raise ValueError(f"duplicate key {key!r} in mapping")
         if rest == "":
             out[key] = _read_nested(lines, pos, base_indent + 1)
         elif rest in _BLOCK_STYLES:
@@ -108,8 +113,12 @@ def _read_list(lines, pos, indent):
                 item[key] = _scalar(kvrest)
             extra = _read_map(lines, pos, indent + 2)
             for k, v in extra.items():
-                if k not in item:
-                    item[k] = v
+                if k in item:
+                    # Inline `- key: value` collides with a later `key:`
+                    # under the same list item — reject for the same
+                    # fail-closed reason as in `_read_map`.
+                    raise ValueError(f"duplicate key {k!r} in mapping")
+                item[k] = v
             out.append(item)
         else:
             out.append(_scalar(rest))

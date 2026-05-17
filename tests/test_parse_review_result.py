@@ -288,6 +288,37 @@ findings: {}
 summary: "Findings as empty dict."
 """
 
+DUPLICATE_HIGHEST_SEVERITY = """task_id: "test-dup-top-severity"
+risk_level: "green"
+auto_merge_allowed: true
+highest_severity: "P1"
+highest_severity: "none"
+findings: []
+summary: "Duplicate highest_severity key."
+"""
+
+DUPLICATE_FINDINGS_KEY = """task_id: "test-dup-findings"
+risk_level: "green"
+auto_merge_allowed: true
+highest_severity: "none"
+findings: null
+findings: []
+summary: "Duplicate findings key."
+"""
+
+DUPLICATE_SEVERITY_IN_FINDING = """task_id: "test-dup-finding-severity"
+risk_level: "green"
+auto_merge_allowed: true
+highest_severity: "P2"
+findings:
+  - severity: "P2"
+    severity: "Info"
+    title: "x"
+    evidence: "y"
+    suggested_fix: "z"
+summary: "Duplicate severity within a finding entry."
+"""
+
 P2_GREEN_ALLOWED_TRUE = """task_id: "test-11"
 risk_level: "green"
 auto_merge_allowed: true
@@ -583,6 +614,23 @@ class ParseReviewTests(unittest.TestCase):
 
     def test_findings_empty_dict_fails_closed(self):
         r = parser.parse(FINDINGS_EMPTY_DICT)
+        self.assertEqual(r["highest_severity"], "P0")
+        self.assertFalse(r["auto_merge_allowed"])
+
+    def test_duplicate_highest_severity_fails_closed(self):
+        # A duplicate `highest_severity:` key is schema drift — the parser
+        # must raise, and the wrapper must treat that as the worst case.
+        r = parser.parse(DUPLICATE_HIGHEST_SEVERITY)
+        self.assertEqual(r["highest_severity"], "P0")
+        self.assertFalse(r["auto_merge_allowed"])
+
+    def test_duplicate_findings_key_fails_closed(self):
+        r = parser.parse(DUPLICATE_FINDINGS_KEY)
+        self.assertEqual(r["highest_severity"], "P0")
+        self.assertFalse(r["auto_merge_allowed"])
+
+    def test_duplicate_severity_within_finding_fails_closed(self):
+        r = parser.parse(DUPLICATE_SEVERITY_IN_FINDING)
         self.assertEqual(r["highest_severity"], "P0")
         self.assertFalse(r["auto_merge_allowed"])
 
