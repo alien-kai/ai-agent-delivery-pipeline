@@ -634,6 +634,36 @@ class ParseReviewTests(unittest.TestCase):
         self.assertEqual(r["highest_severity"], "P0")
         self.assertFalse(r["auto_merge_allowed"])
 
+    def test_malformed_findings_syntax_fails_closed(self):
+        # A bareword `findings [` is malformed YAML — the parser must
+        # raise, and parse-review-result must fail closed instead of
+        # silently treating `findings` as absent.
+        text = (
+            'task_id: "test-malformed"\n'
+            'risk_level: "green"\n'
+            'auto_merge_allowed: true\n'
+            'highest_severity: "none"\n'
+            'findings [\n'
+            'summary: "Malformed findings syntax."\n'
+        )
+        r = parser.parse(text)
+        self.assertEqual(r["highest_severity"], "P0")
+        self.assertFalse(r["auto_merge_allowed"])
+
+    def test_malformed_top_level_review_field_fails_closed(self):
+        # Any malformed top-level line in a review body forces fail-closed.
+        text = (
+            'task_id: "test-malformed-top"\n'
+            'risk_level: "green"\n'
+            'auto_merge_allowed: true\n'
+            'highest_severity: "none"\n'
+            'bareword_no_colon\n'
+            'summary: "..."\n'
+        )
+        r = parser.parse(text)
+        self.assertEqual(r["highest_severity"], "P0")
+        self.assertFalse(r["auto_merge_allowed"])
+
 
 if __name__ == "__main__":
     unittest.main()

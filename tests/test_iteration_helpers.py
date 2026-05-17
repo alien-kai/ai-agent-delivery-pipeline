@@ -458,6 +458,33 @@ class GetTaskMaxIterationsTests(unittest.TestCase):
         finally:
             path.unlink()
 
+    def test_malformed_max_iterations_syntax_fails_closed(self):
+        # A bareword `max_iterations [` is not valid YAML; the helper
+        # must catch the parse error and refuse to emit a usable budget.
+        text = "risk_level: green\nmax_iterations [\n"
+        result = max_iter_mod.extract(text)
+        self.assertIsNone(result["max_iterations"])
+        self.assertFalse(result["allow_auto_fix"])
+        self.assertTrue(result["errors"])
+
+    def test_malformed_risk_level_syntax_fails_closed(self):
+        text = "risk_level [\nmax_iterations: 2\n"
+        result = max_iter_mod.extract(text)
+        self.assertIsNone(result["max_iterations"])
+        self.assertFalse(result["allow_auto_fix"])
+        self.assertTrue(result["errors"])
+
+    def test_cli_malformed_max_iterations_exits_nonzero(self):
+        path = _tmp("risk_level: green\nmax_iterations [\n")
+        try:
+            proc = subprocess.run(
+                [sys.executable, str(MAX_ITER_SCRIPT), str(path)],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(proc.returncode, 1)
+        finally:
+            path.unlink()
+
 
 if __name__ == "__main__":
     unittest.main()

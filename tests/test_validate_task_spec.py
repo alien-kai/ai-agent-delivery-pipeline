@@ -774,6 +774,37 @@ class ValidateTaskSpecTests(unittest.TestCase):
         finally:
             path.unlink()
 
+    def test_malformed_allowed_file_patterns_syntax_invalid(self):
+        # `allowed_file_patterns [` is not valid YAML; the parser must
+        # raise and the validator must surface a failure rather than
+        # silently treating the field as absent.
+        base = (FIXTURES / "valid-green.yaml").read_text(encoding="utf-8")
+        broken = base.replace(
+            'allowed_file_patterns:\n  - "README.md"\n',
+            'allowed_file_patterns [\n',
+        )
+        path = _tmpfile(broken)
+        try:
+            result = validator.validate(path)
+            self.assertFalse(result["ok"])
+        finally:
+            path.unlink()
+
+    def test_malformed_risk_reasoning_syntax_invalid(self):
+        base = (FIXTURES / "valid-green.yaml").read_text(encoding="utf-8")
+        broken = base.replace(
+            'risk_reasoning:\n'
+            '  - "Documentation-only update with narrow scope."\n'
+            '  - "No auth, payment, privacy, dependency, or schema impact."',
+            'risk_reasoning [',
+        )
+        path = _tmpfile(broken)
+        try:
+            result = validator.validate(path)
+            self.assertFalse(result["ok"])
+        finally:
+            path.unlink()
+
 
 if __name__ == "__main__":
     unittest.main()

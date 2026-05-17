@@ -81,5 +81,61 @@ class DuplicateKeyTests(unittest.TestCase):
         self.assertEqual(result["items"], [{"a": 1, "b": 2}])
 
 
+class MalformedSyntaxTests(unittest.TestCase):
+    def test_malformed_top_level_line_raises(self):
+        # `findings [` is not a valid mapping entry; the parser must
+        # raise rather than silently treat `findings` as absent.
+        with self.assertRaises(ValueError):
+            parser.parse_yaml("a: 1\nfindings [\n")
+
+    def test_bareword_top_level_line_raises(self):
+        with self.assertRaises(ValueError):
+            parser.parse_yaml("a: 1\nbareword\nb: 2\n")
+
+    def test_malformed_line_in_nested_mapping_raises(self):
+        with self.assertRaises(ValueError):
+            parser.parse_yaml(
+                "outer:\n"
+                "  a: 1\n"
+                "  bad_no_colon\n"
+                "  b: 2\n"
+            )
+
+    def test_malformed_inline_list_entry_raises(self):
+        # A bareword that doesn't start with `- ` at the list's indent
+        # would have been silently dropped by the old skipping logic.
+        with self.assertRaises(ValueError):
+            parser.parse_yaml(
+                "items:\n"
+                "  - a\n"
+                "  bareword_not_a_dash\n"
+            )
+
+    def test_plain_scalar_continuation_is_allowed(self):
+        # YAML plain scalars can wrap onto subsequent indented lines.
+        # The parser should NOT raise on this legitimate construct.
+        text = (
+            "assumptions:\n"
+            "  - No GitHub issue is filed for this task; source_issue is set to 0\n"
+            "    indicate a planner-generated local draft.\n"
+            "  - The reader already has the Claude Code CLI installed.\n"
+        )
+        result = parser.parse_yaml(text)
+        self.assertEqual(len(result["assumptions"]), 2)
+
+    def test_block_scalar_still_parses(self):
+        # Block scalars (|) must continue to work — they consume indented
+        # content explicitly, not via the plain-scalar continuation path.
+        text = (
+            "objective: |\n"
+            "  multi line\n"
+            "  body text\n"
+            "risk_level: green\n"
+        )
+        result = parser.parse_yaml(text)
+        self.assertEqual(result["risk_level"], "green")
+        self.assertIn("multi line", result["objective"])
+
+
 if __name__ == "__main__":
     unittest.main()

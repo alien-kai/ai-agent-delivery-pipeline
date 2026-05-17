@@ -36,15 +36,22 @@ def _read_map(lines, pos, base_indent):
         if cur < base_indent:
             return out
         if cur > base_indent:
-            pos[0] = i + 1
-            continue
+            # Anything indented deeper than our base should already have
+            # been consumed by a nested reader. Reaching it here means
+            # the input is malformed — fail closed instead of skipping.
+            raise ValueError(
+                f"unexpected indentation at line {i + 1}: {line.strip()!r}"
+            )
         stripped = line[base_indent:]
         if stripped.startswith("- ") or stripped == "-":
             return out
         m = _KEY_RE.match(stripped)
         if not m:
-            pos[0] = i + 1
-            continue
+            # Non-blank, non-comment line at the expected indent that is
+            # neither a mapping entry nor a list start — malformed.
+            raise ValueError(
+                f"unrecognized YAML syntax at line {i + 1}: {line.strip()!r}"
+            )
         key = m.group(1)
         rest = _strip_inline_comment(m.group(2)).strip()
         pos[0] = i + 1
@@ -59,7 +66,28 @@ def _read_map(lines, pos, base_indent):
             out[key] = _read_block_scalar(lines, pos, base_indent + 1, rest)
         else:
             out[key] = _scalar(rest)
+            _consume_scalar_continuation(lines, pos, base_indent)
     return out
+
+
+def _consume_scalar_continuation(lines, pos, base_indent):
+    """Advance past plain-scalar continuation lines after a scalar value.
+
+    YAML lets a plain (unquoted) scalar span multiple physical lines as
+    long as each continuation line is indented deeper than the container.
+    We don't preserve the wrapped text — only advance ``pos`` past it so
+    the surrounding reader's next iteration starts at the expected indent.
+    Any line at indent <= ``base_indent`` ends the continuation.
+    """
+    while pos[0] < len(lines):
+        ln = lines[pos[0]]
+        if _blank_or_comment(ln):
+            pos[0] += 1
+            continue
+        if _indent(ln) > base_indent:
+            pos[0] += 1
+            continue
+        break
 
 
 def _read_nested(lines, pos, min_indent):
@@ -89,8 +117,12 @@ def _read_list(lines, pos, indent):
         if cur < indent:
             return out
         if cur > indent:
-            pos[0] = i + 1
-            continue
+            # Same rule as _read_map: a deeper line that wasn't already
+            # consumed by a nested reader is malformed.
+            raise ValueError(
+                f"unexpected indentation in list at line {i + 1}: "
+                f"{line.strip()!r}"
+            )
         stripped = line[indent:]
         if not (stripped.startswith("- ") or stripped == "-"):
             return out
@@ -123,6 +155,7 @@ def _read_list(lines, pos, indent):
         else:
             out.append(_scalar(rest))
             pos[0] = i + 1
+            _consume_scalar_continuation(lines, pos, indent)
     return out
 
 
