@@ -394,6 +394,112 @@ class ParseReviewTests(unittest.TestCase):
         self.assertEqual(r["highest_severity"], "none")
         self.assertTrue(r["auto_merge_allowed"])
 
+    def test_trailing_findings_after_fence_fails_closed(self):
+        # Attack: a clean fenced result reports findings: [] / severity none,
+        # but smuggles a P0 `findings` block after the closing fence. The
+        # YAML parser only sees the fenced body, so without an envelope
+        # check the gate would treat the review as auto-merge eligible.
+        text = (
+            "Preamble.\n\n"
+            "```yaml\n"
+            'task_id: "test-envelope-suffix"\n'
+            'risk_level: "green"\n'
+            "auto_merge_allowed: true\n"
+            'highest_severity: "none"\n'
+            "findings: []\n"
+            'summary: "clean"\n'
+            "```\n\n"
+            "findings:\n"
+            '  - severity: "P0"\n'
+            '    title: "hidden"\n'
+            '    evidence: "hidden"\n'
+            '    suggested_fix: "hidden"\n'
+        )
+        r = parser.parse(text)
+        self.assertEqual(r["highest_severity"], "P0")
+        self.assertFalse(r["auto_merge_allowed"])
+
+    def test_leading_findings_before_fence_fails_closed(self):
+        # Symmetric attack: stash review-schema content in the prefix.
+        text = (
+            "findings:\n"
+            '  - severity: "P0"\n'
+            '    title: "hidden"\n'
+            '    evidence: "hidden"\n'
+            '    suggested_fix: "hidden"\n\n'
+            "```yaml\n"
+            'task_id: "test-envelope-prefix"\n'
+            'risk_level: "green"\n'
+            "auto_merge_allowed: true\n"
+            'highest_severity: "none"\n'
+            "findings: []\n"
+            'summary: "clean"\n'
+            "```\n"
+        )
+        r = parser.parse(text)
+        self.assertEqual(r["highest_severity"], "P0")
+        self.assertFalse(r["auto_merge_allowed"])
+
+    def test_stray_highest_severity_outside_fence_fails_closed(self):
+        text = (
+            "```yaml\n"
+            'task_id: "test-envelope-extra-key"\n'
+            'risk_level: "green"\n'
+            "auto_merge_allowed: true\n"
+            'highest_severity: "none"\n'
+            "findings: []\n"
+            'summary: "clean"\n'
+            "```\n\n"
+            'highest_severity: "P0"\n'
+        )
+        r = parser.parse(text)
+        self.assertEqual(r["highest_severity"], "P0")
+        self.assertFalse(r["auto_merge_allowed"])
+
+    def test_multiple_fenced_blocks_fail_closed(self):
+        # A second fenced block — even if its content is innocuous —
+        # ambiguates which fence is the authoritative result. Fail closed.
+        text = (
+            "```yaml\n"
+            'task_id: "test-envelope-double-fence"\n'
+            'risk_level: "green"\n'
+            "auto_merge_allowed: true\n"
+            'highest_severity: "none"\n'
+            "findings: []\n"
+            'summary: "clean"\n'
+            "```\n\n"
+            "Some prose.\n\n"
+            "```yaml\n"
+            'risk_level: "red"\n'
+            "```\n"
+        )
+        r = parser.parse(text)
+        self.assertEqual(r["highest_severity"], "P0")
+        self.assertFalse(r["auto_merge_allowed"])
+
+    def test_unrelated_prose_outside_fence_still_allowed(self):
+        # The new envelope guard must not over-reach: ordinary descriptive
+        # prose (headings, narrative sentences, even quoted code references
+        # like `findings:` inside backticks) does not look like a top-level
+        # YAML key and must keep parsing as clean.
+        text = (
+            "## Codex Review\n\n"
+            "Here is the review result. The reviewer's `findings:` field "
+            "is empty because nothing was wrong.\n\n"
+            "```yaml\n"
+            'task_id: "test-envelope-prose-ok"\n'
+            'risk_level: "green"\n'
+            "auto_merge_allowed: true\n"
+            'highest_severity: "none"\n'
+            "findings: []\n"
+            'summary: "clean"\n'
+            "```\n\n"
+            "Nothing to flag.\n"
+        )
+        r = parser.parse(text)
+        self.assertEqual(r["highest_severity"], "none")
+        self.assertTrue(r["auto_merge_allowed"])
+
     def test_override_p1_overrides_allowed(self):
         r = parser.parse(WITH_P1_FINDING)
         self.assertFalse(

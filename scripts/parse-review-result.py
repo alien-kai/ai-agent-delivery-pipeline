@@ -30,15 +30,49 @@ _FENCE_RE = re.compile(
 )
 _TASK_ID_RE = re.compile(r"^task_id\s*:", re.MULTILINE)
 
+# Lines that look like review-result schema content outside the fenced
+# YAML block. A reviewer is expected to emit exactly one fenced YAML
+# result; any further `findings:`, severity field, list-of-finding entry,
+# or additional fence in the surrounding markdown is schema drift that
+# could smuggle a hidden P0 past `parse_yaml`. We detect it and force
+# fail-closed in `parse()`.
+_REVIEW_SCHEMA_LINE_RE = re.compile(
+    r"^\s*("
+    r"task_id\s*:"
+    r"|risk_level\s*:"
+    r"|highest_severity\s*:"
+    r"|auto_merge_allowed\s*:"
+    r"|findings\s*:"
+    r"|summary\s*:"
+    r"|-\s*severity\s*:"
+    r"|`{3,}"
+    r")",
+    re.MULTILINE,
+)
 
-def extract_yaml_block(text: str) -> str:
+
+def extract_yaml_block(text: str) -> tuple[str, bool]:
+    """Return ``(yaml_body, envelope_malformed)``.
+
+    When a fenced YAML block is present, the body is the fence contents
+    and ``envelope_malformed`` is True if the markdown around the fence
+    (either prefix or suffix) contains additional review-schema-like
+    content — another fence, a stray ``findings:`` block, an extra
+    ``- severity:`` list item, etc. That signals a smuggling attempt
+    that the regular YAML parser would otherwise silently drop.
+
+    When no fence is present, fall back to the legacy ``task_id:``-based
+    extraction with no envelope check.
+    """
     m = _FENCE_RE.search(text)
     if m:
-        return m.group(1)
+        outside = text[: m.start()] + "\n" + text[m.end():]
+        envelope_malformed = _REVIEW_SCHEMA_LINE_RE.search(outside) is not None
+        return (m.group(1), envelope_malformed)
     m = _TASK_ID_RE.search(text)
     if m:
-        return text[m.start():]
-    return text
+        return (text[m.start():], False)
+    return (text, False)
 
 
 def _to_bool(v: Any) -> bool:
@@ -98,7 +132,7 @@ def _max_severity_from_findings(findings) -> tuple[str, bool]:
 
 
 def parse(text: str) -> dict:
-    body = extract_yaml_block(text)
+    body, envelope_malformed = extract_yaml_block(text)
     try:
         parsed = parse_yaml(body)
     except Exception:  # noqa: BLE001
@@ -141,9 +175,11 @@ def parse(text: str) -> dict:
     else:
         effective_severity = top_severity
 
-    if findings_top_malformed or findings_entry_malformed:
-        # Reviewer emitted malformed `findings` data — schema violation.
-        # Force P0 so the sanity override below blocks auto-merge.
+    if findings_top_malformed or findings_entry_malformed or envelope_malformed:
+        # Either the in-fence `findings` data violated the schema, or the
+        # markdown around the fenced YAML smuggled extra review content
+        # (additional fence, stray `findings:` block, etc.). Either way
+        # we force P0 so the sanity override below blocks auto-merge.
         effective_severity = "P0"
 
     allowed = _to_bool(parsed.get("auto_merge_allowed", False))
