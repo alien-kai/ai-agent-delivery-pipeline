@@ -1,0 +1,22 @@
+task_id: "invalid-unknown-risk"
+source_issue: 9001
+objective: "Should fail validation because risk_level is unknown."
+risk_level: "unknown"
+merge_policy: "require_human"
+max_iterations: 2
+allow_auto_fix: true
+allowed_file_patterns:
+  - "README.md"
+risk_reasoning:
+  - "Planner used unknown, which is reserved for runtime outputs."
+implementation_units:
+  - id: "unit-1"
+    goal: "Should not validate."
+    verification:
+      - "true"
+acceptance_criteria:
+  - "Validation fails."
+verification_commands:
+  - "true"
+review_requirements:
+  - "Validation must fail."

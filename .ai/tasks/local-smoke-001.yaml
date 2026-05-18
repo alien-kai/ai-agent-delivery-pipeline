@@ -61,6 +61,9 @@ scope_out:
 
 risk_level: green
 merge_policy: auto_merge_if_green
+allowed_file_patterns:
+  - "docs/workflow-smoke-test.md"
+  - ".ai/tasks/local-smoke-001.yaml"
 
 affected_areas:
   - docs/

@@ -1,0 +1,36 @@
+task_id: "test-green"
+source_issue: 1001
+objective: "Update README to add an FAQ section."
+context: "Documentation-only change; no code path touched."
+assumptions:
+  - "README.md exists at repo root."
+scope_in:
+  - "Add a ## FAQ section to README.md."
+scope_out:
+  - "No source code changes."
+risk_level: "green"
+merge_policy: "auto_merge_if_green"
+max_iterations: 2
+allow_auto_fix: true
+allowed_file_patterns:
+  - "README.md"
+forbidden_file_patterns:
+  - "src/**"
+  - ".env*"
+risk_reasoning:
+  - "Documentation-only update with narrow scope."
+  - "No auth, payment, privacy, dependency, or schema impact."
+affected_areas:
+  - "docs"
+implementation_units:
+  - id: "unit-1"
+    goal: "Append FAQ section."
+    verification:
+      - "grep -q '^## FAQ' README.md"
+acceptance_criteria:
+  - "FAQ section exists in README.md."
+verification_commands:
+  - "grep -q '^## FAQ' README.md"
+review_requirements:
+  - "Confirm no code files changed."
+rollback_notes: "git revert the FAQ commit."

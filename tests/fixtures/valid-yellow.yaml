@@ -1,0 +1,34 @@
+task_id: "test-yellow"
+source_issue: 1002
+objective: "Add a user settings panel component."
+context: "New UI surface; no backend changes."
+scope_in:
+  - "Create src/components/Settings directory."
+scope_out:
+  - "No DB schema or auth changes."
+risk_level: "yellow"
+merge_policy: "require_human"
+max_iterations: 3
+allow_auto_fix: true
+allowed_file_patterns:
+  - "src/components/Settings/**"
+forbidden_file_patterns:
+  - "src/auth/**"
+  - "db/migrations/**"
+risk_reasoning:
+  - "New user-visible UI surface; standard yellow risk."
+affected_areas:
+  - "frontend"
+implementation_units:
+  - id: "unit-1"
+    goal: "Create Settings component and tests."
+    verification:
+      - "pnpm test src/components/Settings"
+acceptance_criteria:
+  - "Settings panel renders without console errors."
+verification_commands:
+  - "pnpm test"
+  - "pnpm typecheck"
+review_requirements:
+  - "Confirm no regression to existing pages."
+rollback_notes: "git revert the Settings commit."
