@@ -50,10 +50,53 @@ RISK_MERGE_POLICY = {
 }
 DEFAULT_MAX_ITERATIONS = 2
 
-# Patterns that span the entire tree and therefore make no useful scope
-# guard for a green auto-merge task. The validator rejects them outright
-# on green specs.
-MEANINGLESS_GREEN_PATTERNS = frozenset({"*", "**", "**/*", ".", "./", "/"})
+# See `_is_repo_wide_allowed_pattern` for the green-scope guard. We do not
+# enumerate broad patterns as exact strings any more — semantically
+# equivalent variants such as `./**/*` or `**/**` previously slipped past
+# an exact-match check.
+
+
+def _normalize_scope_pattern(pattern: str) -> str:
+    """Collapse cosmetic variations in a glob pattern.
+
+    This is a conservative normalization for the green-scope guard; it is
+    not a full glob engine. It strips whitespace, folds backslashes to
+    forward slashes, collapses repeated slashes, peels leading ``./``
+    segments, and drops a trailing slash. After this, semantically
+    equivalent repo-wide patterns such as ``./**/*`` and ``**/*`` compare
+    equal and can be rejected by the same rule.
+    """
+    s = pattern.strip().replace("\\", "/")
+    while "//" in s:
+        s = s.replace("//", "/")
+    while s.startswith("./"):
+        s = s[2:]
+    if s == ".":
+        s = ""
+    if len(s) > 1 and s.endswith("/"):
+        s = s[:-1]
+    return s
+
+
+def _is_repo_wide_allowed_pattern(pattern: str) -> bool:
+    """Return True if ``pattern`` is too broad or unsafe for a green scope.
+
+    A pattern is treated as repo-wide when, after normalization, it is
+    empty (``.`` / ``./`` / ``""``), absolute (starts with ``/``), contains
+    a ``..`` traversal segment, or consists only of pure-wildcard segments
+    (``*`` or ``**``). A segment with literal content alongside a wildcard,
+    such as ``*.md`` or ``docs``, anchors the pattern to a real subset of
+    the tree and is not considered repo-wide.
+    """
+    norm = _normalize_scope_pattern(pattern)
+    if norm == "":
+        return True
+    if norm.startswith("/"):
+        return True
+    segments = norm.split("/")
+    if any(seg == ".." for seg in segments):
+        return True
+    return all(seg in ("*", "**") for seg in segments)
 
 # Sentinel for `_check_string_list` so it can tell a genuinely absent key
 # from a key that is present with `null` / a bare value.
@@ -216,15 +259,22 @@ def validate(path: Path, strict: bool = False) -> dict:
     )
 
     # Green tasks must not declare globally-permissive allowed patterns;
-    # those defeat the auto-merge scope guard.
+    # those defeat the auto-merge scope guard. Empty / whitespace-only
+    # items are already rejected by `_check_string_list` — skipping them
+    # here avoids emitting a duplicate error for the same item.
     if risk == "green":
         afp = spec.get("allowed_file_patterns")
         if isinstance(afp, list):
             for i, item in enumerate(afp):
-                if isinstance(item, str) and item.strip() in MEANINGLESS_GREEN_PATTERNS:
+                if (
+                    isinstance(item, str)
+                    and item.strip()
+                    and _is_repo_wide_allowed_pattern(item)
+                ):
                     errors.append(
-                        f"allowed_file_patterns[{i}]={item!r} is too broad for a "
-                        f"green task; green requires a specific file or glob"
+                        f"allowed_file_patterns[{i}]={item!r} is too broad "
+                        f"or unsafe for a green task; green requires a "
+                        f"bounded, repo-relative path"
                     )
 
     hrrr = spec.get("human_review_required_reason")

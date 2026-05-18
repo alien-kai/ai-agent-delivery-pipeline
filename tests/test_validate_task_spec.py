@@ -300,6 +300,78 @@ class ValidateTaskSpecTests(unittest.TestCase):
         finally:
             path.unlink()
 
+    def test_green_repo_wide_allowed_pattern_variants_invalid(self):
+        # Each pattern in this list is semantically equivalent to "allow
+        # the whole repo" or "escape the repo root", so green tasks must
+        # reject them even though they're not in the exact-match broad-set.
+        variants = [
+            "./**/*",
+            "./**",
+            "**/**",
+            "**/*/**",
+            "**/**/**",
+            "*/*",
+            "*/**",
+            "/**",
+            "../**",
+            "docs/../**",
+        ]
+        base = (FIXTURES / "valid-green.yaml").read_text(encoding="utf-8")
+        for variant in variants:
+            with self.subTest(variant=variant):
+                broken = base.replace(
+                    'allowed_file_patterns:\n  - "README.md"',
+                    f'allowed_file_patterns:\n  - "{variant}"',
+                )
+                path = _tmpfile(broken)
+                try:
+                    result = validator.validate(path)
+                    self.assertFalse(
+                        result["ok"],
+                        msg=f"{variant!r} unexpectedly accepted",
+                    )
+                    self.assertTrue(
+                        any(
+                            "too broad" in e or "unsafe" in e
+                            for e in result["errors"]
+                        ),
+                        msg=result["errors"],
+                    )
+                finally:
+                    path.unlink()
+
+    def test_green_bounded_patterns_remain_valid(self):
+        # The new normalizer must not over-reach: bounded, repo-relative
+        # patterns that anchor on a real directory or filename component
+        # are still acceptable green scopes.
+        bounded = [
+            "docs/**",
+            "docs/**/*",
+            "src/*.py",
+            "project/README.md",
+            "**/*.md",
+            "docs/**/README.md",
+        ]
+        base = (FIXTURES / "valid-green.yaml").read_text(encoding="utf-8")
+        for pattern in bounded:
+            with self.subTest(pattern=pattern):
+                modified = base.replace(
+                    'allowed_file_patterns:\n  - "README.md"',
+                    f'allowed_file_patterns:\n  - "{pattern}"',
+                )
+                path = _tmpfile(modified)
+                try:
+                    result = validator.validate(path)
+                    self.assertTrue(
+                        result["ok"],
+                        msg=(
+                            f"{pattern!r} unexpectedly rejected: "
+                            f"{result['errors']}"
+                        ),
+                    )
+                finally:
+                    path.unlink()
+
     def test_invalid_forbidden_file_patterns_empty_string(self):
         base = (FIXTURES / "valid-green.yaml").read_text(encoding="utf-8")
         broken = base.replace(
